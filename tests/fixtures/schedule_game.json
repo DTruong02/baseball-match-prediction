@@ -1,0 +1,25 @@
+{
+  "gamePk": 778001,
+  "gameDate": "2025-04-06T20:05:00Z",
+  "season": 2025,
+  "status": { "abstractGameState": "Preview", "detailedState": "Scheduled" },
+  "teams": {
+    "home": {
+      "team": {
+        "id": 147,
+        "abbreviation": "NYY",
+        "name": "Yankees"
+      },
+      "probablePitcher": { "id": 592866, "fullName": "Trevor Williams" }
+    },
+    "away": {
+      "team": {
+        "id": 111,
+        "abbreviation": "BOS",
+        "name": "Red Sox"
+      },
+      "probablePitcher": { "id": 669203, "fullName": "Corbin Burnes" }
+    }
+  },
+  "venue": { "id": 3313, "name": "Yankee Stadium" }
+}
