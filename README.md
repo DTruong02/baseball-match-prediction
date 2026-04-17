@@ -11,7 +11,7 @@ pip install -e ".[dev]"
 
 ## Train a model
 
-Training downloads **one season schedule** from MLB, then **two HTTP calls per game** (linescore + box score) plus FanGraphs tables (cached under `./cache/`).
+Training downloads **one season schedule** from MLB, then **two HTTP calls per game** (linescore + box score) plus FanGraphs tables (cached under `./cache/`). See more options in --help
 
 ```bash
 baseball-analyze-train --seasons 2023 --max-games 300 --out artifacts/model.joblib
@@ -27,6 +27,33 @@ Requires a trained `artifacts/model.joblib` (path configurable).
 baseball-analyze predict --date 2025-04-06 --model artifacts/model.joblib
 baseball-analyze predict --game-pk 778285 --explain
 ```
+
+## Chat (LLM-backed, grounded)
+
+The chat REPL uses an LLM to understand your question, then calls local tools that fetch schedules and run your trained sklearn model. It will not invent probabilities; it only prints numbers produced by `artifacts/model.joblib`.
+
+Install the optional dependency:
+
+```bash
+pip install -e ".[dev,chat]"
+```
+
+Cloud (OpenAI):
+
+```bash
+set OPENAI_API_KEY=your_key_here
+baseball-analyze chat --model artifacts/model.joblib
+```
+
+Local (OpenAI-compatible server, e.g. Ollama):
+
+```bash
+set LLM_BASE_URL=http://localhost:11434/v1
+set LLM_MODEL=llama3.1
+set OPENAI_API_KEY=ollama
+baseball-analyze chat --model artifacts/model.joblib
+```
+The configuration can also be modified through CLI flags. See --help for more
 
 ## Library usage
 

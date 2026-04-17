@@ -5,16 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
 import typer
 
 from baseball_analyze.features import (
     FEATURE_COLUMNS,
-    build_features_for_game,
     feature_vector,
 )
-from baseball_analyze.model import load_artifact, predict_home_win_proba
+from baseball_analyze.model import load_artifact
 from baseball_analyze.mlb_client import fetch_schedule_by_game_pk, fetch_schedule_for_date
+from baseball_analyze.predict_core import build_feature_rows, predict_for_feature_rows
 
 app = typer.Typer(help="Pregame MLB home win probability (v1).", no_args_is_help=True)
 
@@ -56,7 +55,7 @@ def predict_cmd(
         raise typer.BadParameter("Provide --date and/or --game-pk.")
 
     try:
-        model, _cols = load_artifact(model_path)
+        _model, _cols = load_artifact(model_path)
     except (FileNotFoundError, OSError):
         typer.echo(
             f"Model not found at {model_path}. Run: baseball-analyze-train --max-games 400",
@@ -78,22 +77,13 @@ def predict_cmd(
                 raise typer.BadParameter(f"Could not load schedule for gamePk={game_pk}.")
             games = [g]
 
-    rows = []
-    notes_all: list[tuple[int, list[str]]] = []
-    for g in games:
-        if g.detailed_state in ("Postponed", "Cancelled"):
-            continue
-        fr = build_features_for_game(g, cache_dir=cache_dir)
-        rows.append(fr)
-        if fr.notes:
-            notes_all.append((g.game_pk, fr.notes))
+    rows, notes_all = build_feature_rows(games, cache_dir=cache_dir)
 
     if not rows:
         typer.echo("No games found (or all postponed).")
         raise typer.Exit(code=1)
 
-    X = np.vstack([feature_vector(r) for r in rows])
-    proba = predict_home_win_proba(model, X)
+    proba = predict_for_feature_rows(model_path=model_path, rows=rows)
 
     for fr, p in zip(rows, proba):
         typer.echo(
@@ -106,6 +96,47 @@ def predict_cmd(
     for pk, ns in notes_all:
         for n in ns:
             typer.echo(f"[note game {pk}] {n}", err=True)
+
+
+@app.command("chat")
+def chat_cmd(
+    model_path: Path = typer.Option(
+        Path("artifacts/model.joblib"),
+        "--model",
+        "-m",
+        help="Trained joblib pipeline from baseball-analyze-train.",
+    ),
+    cache_dir: Optional[Path] = typer.Option(
+        None,
+        "--cache-dir",
+        help="FanGraphs cache directory.",
+    ),
+    base_url: Optional[str] = typer.Option(
+        None,
+        "--base-url",
+        help="Optional OpenAI-compatible base URL (e.g. http://localhost:11434/v1).",
+    ),
+    api_key: Optional[str] = typer.Option(
+        None,
+        "--api-key",
+        help="API key (cloud) or placeholder (local). Also supports OPENAI_API_KEY/LLM_API_KEY.",
+    ),
+    llm_model: Optional[str] = typer.Option(
+        None,
+        "--llm-model",
+        help="LLM model name. Also supports OPENAI_MODEL/LLM_MODEL.",
+    ),
+) -> None:
+    """Interactive chat that calls tools for grounded predictions."""
+    from baseball_analyze.chat_repl import run_repl
+
+    run_repl(
+        model_path=model_path,
+        cache_dir=cache_dir,
+        base_url=base_url,
+        api_key=api_key,
+        llm_model=llm_model,
+    )
 
 
 def main() -> None:
