@@ -9,21 +9,21 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
-from baseball_analyze.fangraphs_features import (
+from baseball_analyze.data.fangraphs_features import (
     bullpen_fip_by_team,
     load_team_batting,
     load_team_pitching,
     median_starter_fip_by_team,
 )
-from baseball_analyze.mlb_client import (
+from baseball_analyze.data.mlb_client import (
     ScheduledGame,
     fetch_pitcher_season_fip_xfip,
     fetch_pitcher_season_kbb9,
     fetch_player_pitch_hand,
     fetch_team_ops_vs_pitcher_hand,
 )
-from baseball_analyze.park_data import park_factor_for_home_team
-from baseball_analyze.team_mapping import mlb_abbrev_to_fangraphs
+from baseball_analyze.data.park_data import park_factor_for_home_team
+from baseball_analyze.data.team_mapping import mlb_abbrev_to_fangraphs
 
 FEATURE_COLUMNS: list[str] = [
     "diff_wrc_plus",
