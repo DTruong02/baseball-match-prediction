@@ -36,6 +36,11 @@ from baseball_analyze.features import (
     features_dict_to_matrix,
 )
 from baseball_analyze.models.model import evaluate, predict_home_win_proba, save_artifact, train_pipeline
+from baseball_analyze.models.training_config import (
+    TrainingConfig,
+    apply_cli_overrides,
+    load_training_config,
+)
 
 
 def _append_training_log_csv(
@@ -155,43 +160,20 @@ def build_training_sample(
     return X, y, rows
 
 
-def train_run(
-    seasons: str = typer.Option(
-        "2022,2023",
-        help="Comma-separated seasons for training+validation pool (e.g. 2022,2023,2024).",
-    ),
-    val_seasons: str = typer.Option(
-        "",
-        help="Comma-separated seasons to use as validation (time split). Example: --seasons 2024,2025 --val-seasons 2025",
-    ),
-    out: Path = typer.Option(
-        Path("artifacts/model.joblib"),
-        help="Where to save the sklearn pipeline.",
-    ),
-    test_size: float = typer.Option(0.25, help="Holdout fraction for metrics (time-agnostic split)."),
-    max_games: Optional[int] = typer.Option(
-        None,
-        help="Cap rows for a quick smoke test (default: all Final games).",
-    ),
-    log_csv: Path = typer.Option(
-        Path("artifacts/training_log.csv"),
-        help="Append one row per training run to this CSV file.",
-    ),
-    tune_c: str = typer.Option(
-        "",
-        help="Comma-separated C values to grid search (e.g. 0.05,0.1,0.5,1,5,10). Chooses best by validation log_loss.",
-    ),
-    class_weight: str = typer.Option(
-        "balanced",
-        help="LogisticRegression class_weight: 'balanced' or 'none'.",
-    ),
-    calibrate: bool = typer.Option(False, help="Use isotonic calibration (slower, needs enough rows)."),
-    cache_dir: Optional[Path] = typer.Option(None, help="Override cache directory for FanGraphs tables."),
-    random_state: int = typer.Option(42, help="Random seed for the train/val split."),
-) -> None:
+def _run_training(cfg: TrainingConfig) -> None:
     """Collect games, train logistic regression, print metrics, save artifact."""
-    season_list = [int(s.strip()) for s in seasons.split(",") if s.strip()]
-    val_list = [int(s.strip()) for s in val_seasons.split(",") if s.strip()]
+    season_list = cfg.seasons
+    val_list = cfg.val_seasons
+    out = cfg.out
+    test_size = cfg.test_size
+    max_games = cfg.max_games
+    log_csv = cfg.log_csv
+    calibrate = cfg.hyperparameters.calibrate
+    cw = cfg.hyperparameters.class_weight_sklearn
+    c_grid = cfg.hyperparameters.c_grid
+    cache_dir = cfg.cache_dir
+    random_state = cfg.random_state
+
     for s in season_list:
         typer.echo(f"Loading FanGraphs season tables for {s} (cached under ./cache/)...")
         load_team_batting(s, cache_dir=cache_dir)
@@ -209,9 +191,9 @@ def train_run(
         val_set = set(val_list)
         val_mask = np.array([r.season in val_set for r in rows], dtype=bool)
         if not val_mask.any():
-            raise RuntimeError(f"--val-seasons {val_list} produced 0 validation rows. Check --seasons.")
+            raise RuntimeError(f"val_seasons {val_list} produced 0 validation rows. Check seasons.")
         if val_mask.all():
-            raise RuntimeError(f"--val-seasons {val_list} captured all rows; no training rows left.")
+            raise RuntimeError(f"val_seasons {val_list} captured all rows; no training rows left.")
         X_train, y_train = X[~val_mask], y[~val_mask]
         X_val, y_val = X[val_mask], y[val_mask]
         typer.echo(f"Time split: train_rows={len(y_train)} val_rows={len(y_val)} val_seasons={sorted(val_set)}")
@@ -226,12 +208,7 @@ def train_run(
                 X, y, test_size=test_size, random_state=random_state
             )
 
-    cw = None if class_weight.strip().lower() in ("none", "null", "0") else "balanced"
-
     # Regularization tuning (grid over C), pick best by validation log_loss
-    c_grid = [1.0]
-    if tune_c.strip():
-        c_grid = [float(x.strip()) for x in tune_c.split(",") if x.strip()]
     best = None
     best_model = None
     best_C = None
@@ -272,6 +249,70 @@ def train_run(
         },
     )
     typer.echo(f"Appended training log row to {log_csv}")
+
+
+def train_run(
+    config: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        help="YAML training config path. CLI flags override config values.",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    seasons: Optional[str] = typer.Option(
+        None,
+        help="Comma-separated seasons for training+validation pool (e.g. 2022,2023,2024).",
+    ),
+    val_seasons: Optional[str] = typer.Option(
+        None,
+        help="Comma-separated seasons to use as validation (time split). Example: --seasons 2024,2025 --val-seasons 2025",
+    ),
+    out: Optional[Path] = typer.Option(
+        None,
+        help="Where to save the sklearn pipeline.",
+    ),
+    test_size: Optional[float] = typer.Option(None, help="Holdout fraction for metrics (time-agnostic split)."),
+    max_games: Optional[int] = typer.Option(
+        None,
+        help="Cap rows for a quick smoke test (default: all Final games).",
+    ),
+    log_csv: Optional[Path] = typer.Option(
+        None,
+        help="Append one row per training run to this CSV file.",
+    ),
+    tune_c: Optional[str] = typer.Option(
+        None,
+        help="Comma-separated C values to grid search (e.g. 0.05,0.1,0.5,1,5,10). Chooses best by validation log_loss.",
+    ),
+    class_weight: Optional[str] = typer.Option(
+        None,
+        help="LogisticRegression class_weight: 'balanced' or 'none'.",
+    ),
+    calibrate: Optional[bool] = typer.Option(None, help="Use isotonic calibration (slower, needs enough rows)."),
+    cache_dir: Optional[Path] = typer.Option(None, help="Override cache directory for FanGraphs tables."),
+    random_state: Optional[int] = typer.Option(None, help="Random seed for the train/val split."),
+) -> None:
+    """Collect games, train logistic regression, print metrics, save artifact."""
+    base = load_training_config(config) if config is not None else TrainingConfig()
+    cfg = apply_cli_overrides(
+        base,
+        seasons=seasons,
+        val_seasons=val_seasons,
+        out=out,
+        test_size=test_size,
+        max_games=max_games,
+        log_csv=log_csv,
+        tune_c=tune_c,
+        class_weight=class_weight,
+        calibrate=calibrate,
+        cache_dir=cache_dir,
+        random_state=random_state,
+    )
+    if config is not None:
+        typer.echo(f"Loaded training config from {config}")
+    _run_training(cfg)
 
 
 def main_train() -> None:
