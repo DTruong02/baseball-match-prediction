@@ -35,7 +35,13 @@ from baseball_analyze.features import (
     build_features_for_game,
     features_dict_to_matrix,
 )
-from baseball_analyze.models.model import evaluate, predict_home_win_proba, save_artifact, train_pipeline
+from baseball_analyze.models.artifacts import (
+    build_manifest,
+    make_run_id,
+    optional_git_hash,
+    save_versioned_run,
+)
+from baseball_analyze.models.model import evaluate, predict_home_win_proba, train_pipeline
 from baseball_analyze.models.training_config import (
     TrainingConfig,
     apply_cli_overrides,
@@ -52,6 +58,8 @@ def _append_training_log_csv(
     # stable column order (keep simple, mostly scalar fields)
     fieldnames = [
         "timestamp_utc",
+        "run_id",
+        "run_dir",
         "model_out",
         "seasons",
         "val_seasons",
@@ -66,6 +74,7 @@ def _append_training_log_csv(
         "brier",
         "log_loss",
         "accuracy",
+        "roc_auc",
         "features",
     ]
     with log_path.open("a", newline="", encoding="utf-8") as f:
@@ -224,13 +233,48 @@ def _run_training(cfg: TrainingConfig) -> None:
 
     assert best_model is not None and best is not None
     typer.echo(f"Best metrics: {best}")
-    save_artifact(best_model, out)
-    typer.echo(f"Saved model to {out} with features {FEATURE_COLUMNS}")
+
+    run_id = make_run_id()
+    created_at = dt.datetime.now(dt.timezone.utc)
+    hyperparams = {
+        "calibrate": bool(calibrate),
+        "class_weight": "none" if cw is None else "balanced",
+        "c_grid": [float(c) for c in c_grid],
+        "best_C": None if best_C is None else float(best_C),
+    }
+    git_hash = optional_git_hash()
+    manifest = build_manifest(
+        run_id=run_id,
+        seasons=season_list,
+        val_seasons=val_list,
+        split_type=split_type,
+        train_rows=int(len(y_train)),
+        val_rows=int(len(y_val)),
+        max_games=max_games,
+        test_size=float(test_size),
+        hyperparameters=hyperparams,
+        feature_columns=FEATURE_COLUMNS,
+        created_at=created_at,
+        git_hash=git_hash,
+    )
+    artifacts_root = out.parent
+    run_dir = save_versioned_run(
+        model=best_model,
+        metrics=best,
+        manifest=manifest,
+        artifacts_root=artifacts_root,
+        convenience_out=out,
+        run_id=run_id,
+    )
+    typer.echo(f"Saved versioned run to {run_dir}")
+    typer.echo(f"Copied convenience model to {out} with features {FEATURE_COLUMNS}")
 
     _append_training_log_csv(
         log_csv,
         {
-            "timestamp_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+            "timestamp_utc": created_at.isoformat(timespec="seconds"),
+            "run_id": run_id,
+            "run_dir": str(run_dir),
             "model_out": str(out),
             "seasons": ",".join(str(s) for s in season_list),
             "val_seasons": ",".join(str(s) for s in val_list),
@@ -245,7 +289,8 @@ def _run_training(cfg: TrainingConfig) -> None:
             "brier": float(best["brier"]),
             "log_loss": float(best["log_loss"]),
             "accuracy": float(best["accuracy"]),
-            #"features": ",".join(FEATURE_COLUMNS),
+            "roc_auc": float(best["roc_auc"]),
+            "features": ",".join(FEATURE_COLUMNS),
         },
     )
     typer.echo(f"Appended training log row to {log_csv}")

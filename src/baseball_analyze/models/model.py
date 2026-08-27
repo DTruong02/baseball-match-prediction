@@ -9,7 +9,7 @@ import joblib
 import numpy as np
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import brier_score_loss, log_loss
+from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -56,10 +56,16 @@ def train_pipeline(
 
 def evaluate(y_true: np.ndarray, proba_home: np.ndarray) -> dict[str, float]:
     y_hat = (proba_home >= 0.5).astype(int)
+    if len(np.unique(y_true)) < 2:
+        roc_auc = float("nan")
+    else:
+        roc_auc = float(roc_auc_score(y_true, proba_home))
     return {
-        "brier": float(brier_score_loss(y_true, proba_home)),
-        "log_loss": float(log_loss(y_true, proba_home)),
         "accuracy": float((y_hat == y_true).mean()),
+        "roc_auc": roc_auc,
+        # Binary home-win labels; pass explicitly so single-class folds still score.
+        "log_loss": float(log_loss(y_true, proba_home, labels=[0, 1])),
+        "brier": float(brier_score_loss(y_true, proba_home)),
     }
 
 
