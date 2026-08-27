@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from baseball_analyze.data.mlb_client import ScheduledGame
 from baseball_analyze.features import FEATURE_COLUMNS, FeatureRow
-from baseball_analyze.mlb_client import ScheduledGame
 from baseball_analyze.models.inference import predict_game, resolve_model_version
 
 
@@ -96,3 +96,17 @@ def test_predict_game_raises_when_postponed() -> None:
     ):
         with pytest.raises(ValueError, match="Postponed"):
             predict_game(1, "artifacts/model.joblib")
+
+
+def test_legacy_import_paths_still_work() -> None:
+    """Thin re-exports at old paths remain importable after package reorg."""
+    from baseball_analyze.data.mlb_client import ScheduledGame as canonical_game
+    from baseball_analyze.mlb_client import ScheduledGame as legacy_game
+    from baseball_analyze.model import load_artifact as legacy_load
+    from baseball_analyze.models.model import load_artifact as canonical_load
+    from baseball_analyze.predict_core import build_feature_rows as legacy_rows
+    from baseball_analyze.models.predict_core import build_feature_rows as canonical_rows
+
+    assert legacy_game is canonical_game
+    assert legacy_load is canonical_load
+    assert legacy_rows is canonical_rows

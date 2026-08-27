@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from baseball_analyze.mlb_client import _parse_game
+from baseball_analyze.data.mlb_client import _parse_game
 
 FIXTURE = Path(__file__).parent / "fixtures" / "schedule_game.json"
 

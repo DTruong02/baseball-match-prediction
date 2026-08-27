@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from baseball_analyze.mlb_client import ScheduledGame
+from baseball_analyze.data.mlb_client import ScheduledGame
 
 
 def _game(pk: int, away: str = "BOS", home: str = "NYY") -> ScheduledGame:

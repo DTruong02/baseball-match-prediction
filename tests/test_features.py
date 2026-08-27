@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 import pandas as pd
 
+from baseball_analyze.data.mlb_client import ScheduledGame
 from baseball_analyze.features import build_features_for_game
-from baseball_analyze.mlb_client import ScheduledGame
 
 
 def _fake_team_batting(_season: int, cache_dir=None) -> pd.DataFrame:

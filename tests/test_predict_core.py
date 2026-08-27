@@ -1,7 +1,8 @@
 from unittest.mock import patch
 
+from baseball_analyze.data.mlb_client import ScheduledGame
 from baseball_analyze.features import FeatureRow
-from baseball_analyze.mlb_client import ScheduledGame
+from baseball_analyze.models.predict_core import build_feature_rows
 
 
 def _game(pk: int, state: str) -> ScheduledGame:
@@ -31,10 +32,8 @@ def test_build_feature_rows_skips_postponed_and_collects_notes() -> None:
         notes=["x"],
     )
 
-    with patch("baseball_analyze.predict_core.build_features_for_game") as build_one:
+    with patch("baseball_analyze.models.predict_core.build_features_for_game") as build_one:
         build_one.return_value = fr
-
-        from baseball_analyze.predict_core import build_feature_rows
 
         rows, notes = build_feature_rows([_game(1, "Scheduled"), _game(2, "Postponed")])
 
