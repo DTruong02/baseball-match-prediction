@@ -4,16 +4,14 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from baseball_analyze.mlb_client import (
     ScheduledGame,
-    fetch_schedule_by_game_pk,
     fetch_schedule_for_date,
     fetch_teams,
 )
-from baseball_analyze.predict_core import build_feature_rows, predict_for_feature_rows
+from baseball_analyze.models.inference import predict_game
 
 _TEAM_HINT_MAP: dict[str, str] | None = None
 
@@ -133,42 +131,44 @@ def predict_games(
     """
     Predict P(home win) for one or more MLB gamePks.
 
-    Returns structured rows; probabilities come only from the sklearn artifact.
+    Returns structured rows; probabilities come only from ``predict_game``.
     """
-    games: list[ScheduledGame] = []
+    out: list[dict] = []
     missing: list[int] = []
+    skip_notes: list[str] = []
     for pk in game_pks:
-        g = fetch_schedule_by_game_pk(int(pk))
-        if g is None:
-            missing.append(int(pk))
+        try:
+            result = predict_game(int(pk), model_path, cache_dir=cache_dir)
+        except ValueError as e:
+            msg = str(e)
+            if msg.startswith("Could not load schedule"):
+                missing.append(int(pk))
+            else:
+                skip_notes.append(msg)
             continue
-        games.append(g)
 
-    rows, notes_all = build_feature_rows(games, cache_dir=Path(cache_dir) if cache_dir else None)
-    if not rows:
+        out.append(
+            {
+                "game_pk": result["game_pk"],
+                "season": result["season"],
+                "away_fg": result["away_fg"],
+                "home_fg": result["home_fg"],
+                "p_home_win": float(result["home_win_proba"]),
+                "p_away_win": float(result["away_win_proba"]),
+                "model_version": result["model_version"],
+                "notes": result.get("notes") or [],
+            }
+        )
+
+    if not out:
+        notes = skip_notes or ["No games found (or all postponed/cancelled)."]
         return [
             {
                 "error": "no_games",
                 "missing_game_pks": missing,
-                "notes": ["No games found (or all postponed/cancelled)."],
+                "notes": notes,
             }
         ]
-
-    proba = predict_for_feature_rows(model_path=Path(model_path), rows=rows)
-
-    notes_by_pk: dict[int, list[str]] = {pk: ns for pk, ns in notes_all}
-    out: list[dict] = []
-    for fr, p in zip(rows, proba):
-        out.append(
-            {
-                "game_pk": fr.game_pk,
-                "season": fr.season,
-                "away_fg": fr.away_fg,
-                "home_fg": fr.home_fg,
-                "p_home_win": float(p),
-                "notes": notes_by_pk.get(fr.game_pk, []),
-            }
-        )
 
     if missing:
         out.append({"warning": "missing_game_pks", "missing_game_pks": missing})

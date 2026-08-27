@@ -7,13 +7,9 @@ from typing import Optional
 
 import typer
 
-from baseball_analyze.features import (
-    FEATURE_COLUMNS,
-    feature_vector,
-)
-from baseball_analyze.model import load_artifact
 from baseball_analyze.mlb_client import fetch_schedule_by_game_pk, fetch_schedule_for_date
-from baseball_analyze.predict_core import build_feature_rows, predict_for_feature_rows
+from baseball_analyze.model import load_artifact
+from baseball_analyze.models.inference import predict_game
 
 app = typer.Typer(help="Pregame MLB home win probability (v1).", no_args_is_help=True)
 
@@ -77,25 +73,29 @@ def predict_cmd(
                 raise typer.BadParameter(f"Could not load schedule for gamePk={game_pk}.")
             games = [g]
 
-    rows, notes_all = build_feature_rows(games, cache_dir=cache_dir)
+    results: list[dict] = []
+    for g in games:
+        if g.detailed_state in ("Postponed", "Cancelled"):
+            continue
+        try:
+            results.append(predict_game(g.game_pk, model_path, cache_dir=cache_dir))
+        except ValueError as e:
+            typer.echo(f"[skip] {e}", err=True)
 
-    if not rows:
+    if not results:
         typer.echo("No games found (or all postponed).")
         raise typer.Exit(code=1)
 
-    proba = predict_for_feature_rows(model_path=model_path, rows=rows)
-
-    for fr, p in zip(rows, proba):
+    for result in results:
+        p = float(result["home_win_proba"])
         typer.echo(
-            f"{fr.away_fg} @ {fr.home_fg} (pk={fr.game_pk})  P(home)={p:.3f}"
+            f"{result['away_fg']} @ {result['home_fg']} (pk={result['game_pk']})  P(home)={p:.3f}"
         )
         if explain:
-            for c, v in zip(FEATURE_COLUMNS, feature_vector(fr)):
-                typer.echo(f"  {c}: {v:+.3f}")
-
-    for pk, ns in notes_all:
-        for n in ns:
-            typer.echo(f"[note game {pk}] {n}", err=True)
+            for c, v in result["features"].items():
+                typer.echo(f"  {c}: {float(v):+.3f}")
+        for n in result.get("notes") or []:
+            typer.echo(f"[note game {result['game_pk']}] {n}", err=True)
 
 
 @app.command("chat")

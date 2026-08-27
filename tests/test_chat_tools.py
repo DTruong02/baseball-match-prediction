@@ -1,8 +1,5 @@
 from unittest.mock import patch
 
-import numpy as np
-
-from baseball_analyze.features import FeatureRow
 from baseball_analyze.mlb_client import ScheduledGame
 
 
@@ -24,21 +21,21 @@ def _game(pk: int, away: str = "BOS", home: str = "NYY") -> ScheduledGame:
 
 
 def test_predict_games_mocked() -> None:
-    fr = FeatureRow(
-        game_pk=1,
-        season=2025,
-        home_fg="NYY",
-        away_fg="BOS",
-        features={"diff_wrc_plus": 1.0},
-        notes=["note1"],
-    )
-
-    with patch("baseball_analyze.chat_tools.fetch_schedule_by_game_pk") as f_by_pk, patch(
-        "baseball_analyze.chat_tools.build_feature_rows"
-    ) as build_rows, patch("baseball_analyze.chat_tools.predict_for_feature_rows") as pred:
-        f_by_pk.side_effect = [_game(1), None]
-        build_rows.return_value = ([fr], [(1, ["note1"])])
-        pred.return_value = np.array([0.42])
+    with patch("baseball_analyze.chat_tools.predict_game") as pred:
+        pred.side_effect = [
+            {
+                "game_pk": 1,
+                "season": 2025,
+                "away_fg": "BOS",
+                "home_fg": "NYY",
+                "home_win_proba": 0.42,
+                "away_win_proba": 0.58,
+                "features": {},
+                "model_version": "run_v1",
+                "notes": ["note1"],
+            },
+            ValueError("Could not load schedule for gamePk=2"),
+        ]
 
         from baseball_analyze.chat_tools import predict_games
 
@@ -46,9 +43,11 @@ def test_predict_games_mocked() -> None:
 
     assert out[0]["game_pk"] == 1
     assert out[0]["p_home_win"] == 0.42
+    assert out[0]["p_away_win"] == 0.58
     assert out[0]["away_fg"] == "BOS"
     assert out[0]["home_fg"] == "NYY"
     assert out[0]["notes"] == ["note1"]
+    assert out[0]["model_version"] == "run_v1"
     assert out[1]["warning"] == "missing_game_pks"
     assert out[1]["missing_game_pks"] == [2]
 
@@ -69,4 +68,3 @@ def test_find_games_on_date_maps_team_name() -> None:
 
     assert len(hits) == 1
     assert hits[0]["game_pk"] == 10
-
