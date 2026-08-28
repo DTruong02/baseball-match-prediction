@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://baseball:baseball@localhost:5432/baseball"
     secret_key: str = "change-me-in-production"
+    access_token_expire_minutes: int = 60 * 24
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 

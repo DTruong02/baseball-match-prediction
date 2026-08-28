@@ -9,9 +9,13 @@ description = "FastAPI backend for the baseball intelligence platform"
 requires-python = ">=3.9"
 dependencies = [
     "alembic>=1.13",
+    "bcrypt>=4.0",
+    "email-validator>=2.0",
     "fastapi>=0.115",
     "psycopg2-binary>=2.9",
     "pydantic-settings>=2.0",
+    "python-jose[cryptography]>=3.3",
+    "python-multipart>=0.0.9",
     "sqlalchemy>=2.0",
     "uvicorn[standard]>=0.30",
 ]
