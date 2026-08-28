@@ -133,9 +133,38 @@ Order is fixed in `baseball_analyze.features.FEATURE_COLUMNS`:
 
 Park factors are static defaults in `data/park_data.py`; refresh from FanGraphs if you need current-year precision.
 
+## Backend API (Stage 2)
+
+Local Postgres and a FastAPI skeleton live under `backend/`. The API depends on the editable `baseball-analyze` package.
+
+**Start Postgres:**
+
+```bash
+docker compose up -d db
+```
+
+**Install and run the API** (from repo root):
+
+```bash
+pip install -e ".[backend]"
+cp .env.example .env
+baseball-api
+```
+
+Or with uvicorn directly:
+
+```bash
+uvicorn baseball_backend.main:app --reload
+```
+
+**Health check:** `GET http://localhost:8000/health`
+
+Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`.
+
 ## Tests
 
 ```bash
+pip install -e ".[dev,backend]"
 pytest -q
 ```
 

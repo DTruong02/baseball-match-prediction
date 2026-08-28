@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baseball-backend"
+version = "0.1.0"
+description = "FastAPI backend for the baseball intelligence platform"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic-settings>=2.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["baseball_backend*"]

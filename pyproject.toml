@@ -23,10 +23,20 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
 chat = ["openai>=1.0"]
+backend = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic-settings>=2.0",
+    "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["backend"]
 
 [project.scripts]
 baseball-analyze = "baseball_analyze.cli:main"
 baseball-analyze-train = "baseball_analyze.train:main_train"
+baseball-api = "baseball_backend.main:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "backend"]
