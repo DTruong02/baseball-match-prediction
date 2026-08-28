@@ -159,6 +159,13 @@ uvicorn baseball_backend.main:app --reload
 
 **Health check:** `GET http://localhost:8000/health`
 
+**Database migrations** (from `backend/`, with Postgres running):
+
+```bash
+cd backend
+alembic upgrade head
+```
+
 Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`.
 
 ## Tests
