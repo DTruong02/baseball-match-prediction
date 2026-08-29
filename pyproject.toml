@@ -44,6 +44,7 @@ pythonpath = ["backend"]
 baseball-analyze = "baseball_analyze.cli:main"
 baseball-analyze-train = "baseball_analyze.train:main_train"
 baseball-api = "baseball_backend.main:main"
+baseball-sync-schedule = "baseball_backend.sync_schedule:main"
 
 [tool.setuptools.packages.find]
 where = ["src", "backend"]

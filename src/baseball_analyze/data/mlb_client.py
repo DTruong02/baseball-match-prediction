@@ -73,6 +73,9 @@ class ScheduledGame:
     venue_id: Optional[int]
     home_probable_id: Optional[int]
     away_probable_id: Optional[int]
+    venue_name: Optional[str] = None
+    home_probable_name: Optional[str] = None
+    away_probable_name: Optional[str] = None
 
 
 def fetch_teams(sport_id: int = 1) -> list[dict[str, Any]]:
@@ -115,6 +118,9 @@ def _parse_game(raw: dict[str, Any]) -> ScheduledGame:
         venue_id=int(venue["id"]) if venue.get("id") else None,
         home_probable_id=int(hp["id"]) if hp.get("id") else None,
         away_probable_id=int(ap["id"]) if ap.get("id") else None,
+        venue_name=str(venue["name"]) if venue.get("name") else None,
+        home_probable_name=str(hp["fullName"]) if hp.get("fullName") else None,
+        away_probable_name=str(ap["fullName"]) if ap.get("fullName") else None,
     )
 
 
