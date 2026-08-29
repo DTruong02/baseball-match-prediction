@@ -168,6 +168,28 @@ alembic upgrade head
 
 Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`.
 
+## Frontend (Stage 2)
+
+Next.js App Router app under `frontend/`. Authenticated users can register, sign in, browse today's MLB schedule, open game details, and view a profile shell.
+
+**Setup:**
+
+```bash
+cd frontend
+cp .env.local.example .env.local
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. The dev server expects the API at `http://localhost:8000` (override with `NEXT_PUBLIC_API_URL` in `.env.local`).
+
+**Pages:**
+
+- `/login`, `/register` — JWT auth (token stored in `localStorage`)
+- `/` — schedule dashboard with date picker
+- `/games/[gamePk]` — game detail (predictions stub until Stage 3)
+- `/profile` — account shell
+
 ## Tests
 
 ```bash
