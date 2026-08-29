@@ -166,7 +166,17 @@ cd backend
 alembic upgrade head
 ```
 
-Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`.
+Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`.
+
+### Model registry (Stage 3)
+
+After training, register a versioned run in Postgres so the API can load the active pregame model for inference:
+
+```bash
+baseball-register-model 20260824T200812Z_deadbeef --activate
+```
+
+This reads `artifacts/<run_id>/{model.joblib,metrics.json,manifest.json}`, upserts a `model_versions` row (metrics, feature columns, hyperparameters, train seasons), and optionally sets `status=active` while archiving other active models of the same kind.
 
 ## Frontend (Stage 2)
 

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +16,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    artifacts_root: Path = Path("artifacts")
 
 
 @lru_cache
