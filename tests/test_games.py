@@ -5,12 +5,13 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import JSON, create_engine
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from baseball_backend.db.base import Base
-from baseball_backend.db.models import Game, Player, Team, User
+from baseball_backend.db.models import Game, ModelVersion, Player, Team, User
 from baseball_backend.db.session import get_db
 from baseball_backend.main import app
 
@@ -47,7 +48,19 @@ def db_session() -> Generator[Session, None, None]:
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    tables = [User.__table__, Team.__table__, Player.__table__, Game.__table__]
+    jsonb_columns: list = []
+    for table in (ModelVersion.__table__,):
+        for column in table.columns:
+            if isinstance(column.type, JSONB):
+                jsonb_columns.append(column)
+                column.type = JSON()
+    tables = [
+        User.__table__,
+        Team.__table__,
+        Player.__table__,
+        Game.__table__,
+        ModelVersion.__table__,
+    ]
     Base.metadata.create_all(bind=engine, tables=tables)
     session = sessionmaker(bind=engine, autocommit=False, autoflush=False)()
     try:
@@ -62,6 +75,8 @@ def db_session() -> Generator[Session, None, None]:
         session.close()
         Base.metadata.drop_all(bind=engine, tables=tables)
         engine.dispose()
+        for column in jsonb_columns:
+            column.type = JSONB()
 
 
 @pytest.fixture
@@ -120,7 +135,10 @@ def test_get_game_returns_404_for_missing_game(
     assert response.status_code == 404
 
 
-def test_get_prediction_returns_null(client: TestClient, auth_headers: dict[str, str]) -> None:
+def test_get_prediction_returns_null_without_model(
+    client: TestClient,
+    auth_headers: dict[str, str],
+) -> None:
     response = client.get("/predictions/778001", headers=auth_headers)
     assert response.status_code == 200
     assert response.json() is None

@@ -66,6 +66,44 @@ class GameRead(BaseModel):
     winner: Optional[str] = None
 
 
+class ModelVersionSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    run_id: str
+
+
+class PredictionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    game_pk: int
+    home_win_proba: float
+    away_win_proba: float
+    features: Optional[dict[str, float]] = None
+    notes: Optional[str] = None
+    model_version: ModelVersionSummary
+    created_at: datetime
+
+    @classmethod
+    def from_prediction(cls, prediction: object) -> "PredictionRead":
+        from baseball_backend.db.models import Prediction
+
+        if not isinstance(prediction, Prediction):
+            raise TypeError("expected Prediction instance")
+        return cls(
+            id=prediction.id,
+            game_pk=prediction.game.game_pk,
+            home_win_proba=prediction.home_win_proba,
+            away_win_proba=prediction.away_win_proba,
+            features=prediction.features,
+            notes=prediction.notes,
+            model_version=ModelVersionSummary.model_validate(prediction.model_version),
+            created_at=prediction.created_at,
+        )
+
+
 class ScheduleSyncResponse(BaseModel):
     date: date
     games_synced: int
+    predictions_generated: int = 0

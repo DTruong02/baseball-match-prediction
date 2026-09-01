@@ -10,6 +10,7 @@ from baseball_backend.db.models import Game, User
 from baseball_backend.db.session import get_db
 from baseball_backend.deps import get_current_user
 from baseball_backend.schemas import GameRead, ScheduleSyncResponse
+from baseball_backend.services.prediction_service import generate_missing_predictions_for_date
 from baseball_backend.services.schedule_sync import sync_schedule_for_date
 
 router = APIRouter(prefix="/games", tags=["games"])
@@ -48,7 +49,12 @@ def sync_games_for_date(
     _current_user: User = Depends(get_current_user),
 ) -> ScheduleSyncResponse:
     games_synced = sync_schedule_for_date(db, game_date.isoformat())
-    return ScheduleSyncResponse(date=game_date, games_synced=games_synced)
+    predictions_generated = generate_missing_predictions_for_date(db, game_date)
+    return ScheduleSyncResponse(
+        date=game_date,
+        games_synced=games_synced,
+        predictions_generated=predictions_generated,
+    )
 
 
 @router.get("/{game_pk}", response_model=GameRead)
