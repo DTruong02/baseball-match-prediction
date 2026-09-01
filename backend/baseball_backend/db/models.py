@@ -161,6 +161,7 @@ class ModelVersion(Base):
         String(32), nullable=False, default=ModelVersionStatus.ARCHIVED.value
     )
     metrics: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    production_metrics: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     feature_columns: Mapped[Optional[list[str]]] = mapped_column(JSONB, nullable=True)
     hyperparameters: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     train_seasons: Mapped[Optional[list[int]]] = mapped_column(JSONB, nullable=True)

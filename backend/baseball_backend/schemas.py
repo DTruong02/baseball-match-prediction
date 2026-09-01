@@ -107,3 +107,22 @@ class ScheduleSyncResponse(BaseModel):
     date: date
     games_synced: int
     predictions_generated: int = 0
+
+
+class CalibrationBucket(BaseModel):
+    bin_low: float
+    bin_high: float
+    n: int
+    predicted_mean: Optional[float] = None
+    actual_rate: Optional[float] = None
+
+
+class ModelPerformanceRead(BaseModel):
+    model_version_id: int
+    run_id: str
+    n_games: int
+    accuracy: Optional[float] = None
+    roc_auc: Optional[float] = None
+    log_loss: Optional[float] = None
+    brier: Optional[float] = None
+    calibration_buckets: list[CalibrationBucket] = Field(default_factory=list)

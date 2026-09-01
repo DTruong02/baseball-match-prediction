@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from baseball_analyze.data.mlb_client import ScheduledGame, fetch_schedule_for_date, fetch_teams
 from baseball_backend.db.models import Game, Player, Team
 
+_FINAL_STATES = frozenset({"Final", "Game Over", "Completed Early"})
+
 
 def _team_name_and_city(team_payload: dict[str, Any], abbrev: str) -> tuple[str, str | None]:
     name = team_payload.get("name") or team_payload.get("teamName") or abbrev
@@ -53,6 +55,28 @@ def _upsert_player(
     return player
 
 
+def _outcome_fields(scheduled: ScheduledGame) -> dict[str, int | str | None]:
+    """Derive scores and winner from schedule payload when available."""
+    fields: dict[str, int | str | None] = {}
+    if scheduled.home_score is not None:
+        fields["home_score"] = scheduled.home_score
+    if scheduled.away_score is not None:
+        fields["away_score"] = scheduled.away_score
+
+    if scheduled.detailed_state in _FINAL_STATES:
+        home_score = scheduled.home_score
+        away_score = scheduled.away_score
+        if home_score is not None and away_score is not None and home_score != away_score:
+            fields["winner"] = (
+                scheduled.home_abbrev
+                if home_score > away_score
+                else scheduled.away_abbrev
+            )
+        else:
+            fields["winner"] = None
+    return fields
+
+
 def _upsert_game(db: Session, scheduled: ScheduledGame) -> Game:
     game = db.scalar(select(Game).where(Game.game_pk == scheduled.game_pk))
     fields = {
@@ -66,6 +90,7 @@ def _upsert_game(db: Session, scheduled: ScheduledGame) -> Game:
         "venue_name": scheduled.venue_name,
         "home_probable_pitcher_id": scheduled.home_probable_id,
         "away_probable_pitcher_id": scheduled.away_probable_id,
+        **_outcome_fields(scheduled),
     }
     if game is None:
         game = Game(game_pk=scheduled.game_pk, **fields)

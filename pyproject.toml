@@ -47,6 +47,7 @@ baseball-api = "baseball_backend.main:main"
 baseball-sync-schedule = "baseball_backend.sync_schedule:main"
 baseball-register-model = "baseball_backend.register_model:main"
 baseball-predict-games = "baseball_backend.predict_games:main"
+baseball-score-predictions = "baseball_backend.score_predictions:main"
 
 [tool.setuptools.packages.find]
 where = ["src", "backend"]

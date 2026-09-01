@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from baseball_backend.routes.auth import router as auth_router
 from baseball_backend.routes.games import router as games_router
+from baseball_backend.routes.model import router as model_router
 from baseball_backend.routes.predictions import router as predictions_router
 from baseball_backend.settings import get_settings
 
@@ -21,6 +22,7 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(games_router)
+app.include_router(model_router)
 app.include_router(predictions_router)
 
 

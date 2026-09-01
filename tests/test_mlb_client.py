@@ -19,3 +19,5 @@ def test_parse_schedule_game_fixture() -> None:
     assert g.venue_name == "Yankee Stadium"
     assert g.home_probable_name == "Trevor Williams"
     assert g.away_probable_name == "Corbin Burnes"
+    assert g.home_score is None
+    assert g.away_score is None

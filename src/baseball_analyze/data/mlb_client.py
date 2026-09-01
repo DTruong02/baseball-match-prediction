@@ -76,6 +76,8 @@ class ScheduledGame:
     venue_name: Optional[str] = None
     home_probable_name: Optional[str] = None
     away_probable_name: Optional[str] = None
+    home_score: Optional[int] = None
+    away_score: Optional[int] = None
 
 
 def fetch_teams(sport_id: int = 1) -> list[dict[str, Any]]:
@@ -96,6 +98,15 @@ def _team_abbrev(team: dict[str, Any]) -> str:
         if int(tid) in mp:
             return mp[int(tid)]
     raise KeyError("team missing abbreviation and unknown id")
+
+
+def _optional_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_game(raw: dict[str, Any]) -> ScheduledGame:
@@ -121,6 +132,8 @@ def _parse_game(raw: dict[str, Any]) -> ScheduledGame:
         venue_name=str(venue["name"]) if venue.get("name") else None,
         home_probable_name=str(hp["fullName"]) if hp.get("fullName") else None,
         away_probable_name=str(ap["fullName"]) if ap.get("fullName") else None,
+        home_score=_optional_int(teams["home"].get("score")),
+        away_score=_optional_int(teams["away"].get("score")),
     )
 
 
