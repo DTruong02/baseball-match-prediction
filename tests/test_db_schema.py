@@ -1,6 +1,6 @@
 """Metadata and index coverage for the initial database schema."""
 
-from baseball_backend.db import Base, Game, User
+from baseball_backend.db import Base, Game, GameEvent, User
 
 
 def test_all_tables_registered() -> None:
@@ -9,6 +9,7 @@ def test_all_tables_registered() -> None:
         "teams",
         "players",
         "games",
+        "game_events",
         "predictions",
         "model_versions",
     }
@@ -36,3 +37,19 @@ def test_game_indexes() -> None:
         if hasattr(constraint, "name")
     )
     assert game_pk_unique
+
+
+def test_game_event_indexes() -> None:
+    indexes = {index.name: index for index in GameEvent.__table__.indexes}
+    assert "ix_game_events_game_pk_sequence" in indexes
+    assert [column.name for column in indexes["ix_game_events_game_pk_sequence"].columns] == [
+        "game_pk",
+        "sequence",
+    ]
+
+    event_unique = any(
+        constraint.name == "uq_game_events_game_pk_event_id"
+        for constraint in GameEvent.__table__.constraints
+        if hasattr(constraint, "name")
+    )
+    assert event_unique

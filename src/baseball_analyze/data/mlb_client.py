@@ -196,6 +196,53 @@ def fetch_linescore(game_pk: int) -> dict[str, Any]:
     return _get(f"/game/{game_pk}/linescore")
 
 
+def fetch_play_by_play(game_pk: int) -> dict[str, Any]:
+    """Play-by-play payload (allPlays, scoringPlays, etc.)."""
+    return _get(f"/game/{game_pk}/playByPlay")
+
+
+def fetch_live_feed(game_pk: int) -> dict[str, Any]:
+    """
+    Live feed with ``gameData`` and ``liveData`` sections.
+
+    Tries the canonical ``/feed/live`` endpoint first. When unavailable (common
+    for archived games), assembles a compatible structure from play-by-play,
+    linescore, and schedule data.
+    """
+    try:
+        return _get(f"/game/{game_pk}/feed/live")
+    except MLBAPIError:
+        pass
+
+    pbp = fetch_play_by_play(game_pk)
+    linescore = fetch_linescore(game_pk)
+    scheduled = fetch_schedule_by_game_pk(game_pk, hydrate_probable=False)
+
+    status: dict[str, Any]
+    if scheduled is not None:
+        status = {
+            "abstractGameState": scheduled.status,
+            "detailedState": scheduled.detailed_state,
+        }
+    else:
+        status = {"abstractGameState": "Unknown", "detailedState": "Unknown"}
+
+    return {
+        "gameData": {
+            "game": {"pk": game_pk},
+            "status": status,
+        },
+        "liveData": {
+            "plays": {
+                "allPlays": pbp.get("allPlays") or [],
+                "scoringPlays": pbp.get("scoringPlays") or [],
+                "currentPlay": pbp.get("currentPlay"),
+            },
+            "linescore": linescore,
+        },
+    }
+
+
 def fetch_pitcher_season_fip_xfip(mlb_player_id: int, season: int) -> Tuple[Optional[float], Optional[float]]:
     """Season pitching FIP/xFIP from MLB sabermetrics stats (no FanGraphs id required)."""
     try:

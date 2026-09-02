@@ -3,6 +3,7 @@
 from baseball_backend.db.base import Base
 from baseball_backend.db.models import (
     Game,
+    GameEvent,
     ModelVersion,
     ModelVersionKind,
     ModelVersionStatus,
@@ -16,6 +17,7 @@ from baseball_backend.db.session import get_db, get_engine, get_session_factory
 __all__ = [
     "Base",
     "Game",
+    "GameEvent",
     "ModelVersion",
     "ModelVersionKind",
     "ModelVersionStatus",

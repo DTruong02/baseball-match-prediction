@@ -144,6 +144,40 @@ class Game(Base):
         "Player", foreign_keys=[away_probable_pitcher_id]
     )
     predictions: Mapped[list["Prediction"]] = relationship(back_populates="game")
+    events: Mapped[list["GameEvent"]] = relationship(
+        back_populates="game",
+        foreign_keys="GameEvent.game_pk",
+        primaryjoin="Game.game_pk == GameEvent.game_pk",
+        viewonly=True,
+    )
+
+
+class GameEvent(Base):
+    """Normalized play-by-play or state event from MLB live feed."""
+
+    __tablename__ = "game_events"
+    __table_args__ = (
+        UniqueConstraint("game_pk", "event_id", name="uq_game_events_game_pk_event_id"),
+        Index("ix_game_events_game_pk_sequence", "game_pk", "sequence"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    game_pk: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    type: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    game: Mapped[Optional["Game"]] = relationship(
+        "Game",
+        back_populates="events",
+        foreign_keys=[game_pk],
+        primaryjoin="GameEvent.game_pk == Game.game_pk",
+        viewonly=True,
+    )
 
 
 class ModelVersion(Base):

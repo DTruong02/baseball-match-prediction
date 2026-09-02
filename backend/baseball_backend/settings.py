@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     artifacts_root: Path = Path("artifacts")
+    live_poll_interval_seconds: float = 15.0
+    live_poll_game_delay_seconds: float = 0.5
 
 
 @lru_cache
