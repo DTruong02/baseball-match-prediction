@@ -5,9 +5,10 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { PredictionDisplay } from "@/components/PredictionDisplay";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ApiError, fetchGame, fetchPrediction } from "@/lib/api";
-import type { Game } from "@/lib/types";
+import type { Game, Prediction } from "@/lib/types";
 
 function teamLabel(team: Game["home_team"]): string {
   return team.city ? `${team.city} ${team.name}` : team.name;
@@ -18,7 +19,7 @@ export default function GameDetailPage() {
   const gamePk = Number(params.gamePk);
   const invalidGamePk = !Number.isFinite(gamePk);
   const [game, setGame] = useState<Game | null>(null);
-  const [hasPrediction, setHasPrediction] = useState(false);
+  const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [loading, setLoading] = useState(!invalidGamePk);
   const [error, setError] = useState<string | null>(
     invalidGamePk ? "Invalid game id." : null,
@@ -36,13 +37,13 @@ export default function GameDetailPage() {
       setError(null);
 
       try {
-        const [gameData, prediction] = await Promise.all([
+        const [gameData, predictionData] = await Promise.all([
           fetchGame(gamePk),
           fetchPrediction(gamePk),
         ]);
         if (!cancelled) {
           setGame(gameData);
-          setHasPrediction(prediction != null);
+          setPrediction(predictionData);
         }
       } catch (err) {
         if (!cancelled) {
@@ -135,12 +136,15 @@ export default function GameDetailPage() {
 
               <section className="rounded-xl border border-border bg-surface p-6">
                 <h2 className="text-sm font-medium text-muted">Pregame prediction</h2>
-                {hasPrediction ? (
-                  <p className="mt-3 text-sm">Prediction available.</p>
+                {prediction ? (
+                  <PredictionDisplay
+                    game={game}
+                    prediction={prediction}
+                    variant="detail"
+                  />
                 ) : (
                   <p className="mt-3 text-sm text-muted">
-                    Predictions will appear here once the model is integrated in
-                    Stage 3.
+                    No pregame prediction is available for this game yet.
                   </p>
                 )}
               </section>

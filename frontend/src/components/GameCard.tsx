@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import type { Game } from "@/lib/types";
+import { PredictionDisplay } from "@/components/PredictionDisplay";
+import type { Game, Prediction } from "@/lib/types";
 
 function teamLabel(team: Game["home_team"]): string {
   return team.city ? `${team.city} ${team.name}` : team.name;
@@ -13,7 +14,13 @@ function formatScore(game: Game): string | null {
   return `${game.away_score} – ${game.home_score}`;
 }
 
-export function GameCard({ game }: { game: Game }) {
+export function GameCard({
+  game,
+  prediction,
+}: {
+  game: Game;
+  prediction?: Prediction | null;
+}) {
   const score = formatScore(game);
 
   return (
@@ -45,7 +52,9 @@ export function GameCard({ game }: { game: Game }) {
           ) : null}
         </div>
       </div>
-      {!score && (game.away_probable_pitcher || game.home_probable_pitcher) ? (
+      {prediction ? (
+        <PredictionDisplay game={game} prediction={prediction} variant="card" />
+      ) : !score && (game.away_probable_pitcher || game.home_probable_pitcher) ? (
         <p className="mt-3 text-xs text-muted">
           {game.away_probable_pitcher?.full_name ?? "TBD"} vs{" "}
           {game.home_probable_pitcher?.full_name ?? "TBD"}

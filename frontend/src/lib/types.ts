@@ -42,3 +42,47 @@ export interface Game {
 export interface ApiErrorBody {
   detail?: string | { msg: string }[];
 }
+
+export interface ModelVersionSummary {
+  id: number;
+  run_id: string;
+}
+
+export interface Prediction {
+  id: number;
+  game_pk: number;
+  home_win_proba: number;
+  away_win_proba: number;
+  features?: Record<string, number> | null;
+  notes?: string | null;
+  model_version: ModelVersionSummary;
+  created_at: string;
+}
+
+export interface CalibrationBucket {
+  bin_low: number;
+  bin_high: number;
+  n: number;
+  predicted_mean: number | null;
+  actual_rate: number | null;
+}
+
+export interface ModelPerformance {
+  model_version_id: number;
+  run_id: string;
+  n_games: number;
+  accuracy: number | null;
+  roc_auc: number | null;
+  log_loss: number | null;
+  brier: number | null;
+  calibration_buckets: CalibrationBucket[];
+}
+
+export interface ModelPerformanceParams {
+  season?: number;
+  team?: string;
+  confidence_band?: string;
+  confidence_min?: number;
+  confidence_max?: number;
+  model_version_id?: number;
+}

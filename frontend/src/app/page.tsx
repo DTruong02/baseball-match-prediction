@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { GameCard } from "@/components/GameCard";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { ApiError, fetchGames } from "@/lib/api";
-import type { Game } from "@/lib/types";
+import { ApiError, fetchGames, fetchPrediction } from "@/lib/api";
+import type { Game, Prediction } from "@/lib/types";
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -15,6 +15,9 @@ function todayIsoDate(): string {
 export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState(todayIsoDate);
   const [games, setGames] = useState<Game[]>([]);
+  const [predictions, setPredictions] = useState<
+    Record<number, Prediction | null>
+  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,8 +30,19 @@ export default function DashboardPage() {
 
       try {
         const data = await fetchGames(selectedDate);
+        const predictionResults = await Promise.all(
+          data.map(async (game) => {
+            try {
+              const prediction = await fetchPrediction(game.game_pk);
+              return [game.game_pk, prediction] as const;
+            } catch {
+              return [game.game_pk, null] as const;
+            }
+          }),
+        );
         if (!cancelled) {
           setGames(data);
+          setPredictions(Object.fromEntries(predictionResults));
         }
       } catch (err) {
         if (!cancelled) {
@@ -38,6 +52,7 @@ export default function DashboardPage() {
             setError("Failed to load games.");
           }
           setGames([]);
+          setPredictions({});
         }
       } finally {
         if (!cancelled) {
@@ -94,7 +109,11 @@ export default function DashboardPage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               {games.map((game) => (
-                <GameCard key={game.game_pk} game={game} />
+                <GameCard
+                  key={game.game_pk}
+                  game={game}
+                  prediction={predictions[game.game_pk]}
+                />
               ))}
             </div>
           )}

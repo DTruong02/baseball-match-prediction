@@ -3,7 +3,15 @@ import {
   getStoredToken,
   setStoredToken,
 } from "@/lib/auth-storage";
-import type { ApiErrorBody, Game, TokenResponse, User } from "@/lib/types";
+import type {
+  ApiErrorBody,
+  Game,
+  ModelPerformance,
+  ModelPerformanceParams,
+  Prediction,
+  TokenResponse,
+  User,
+} from "@/lib/types";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
@@ -115,12 +123,35 @@ export async function fetchGame(gamePk: number): Promise<Game> {
 
 export async function fetchPrediction(
   gamePk: number,
-): Promise<null | Record<string, unknown>> {
-  return apiFetch<null | Record<string, unknown>>(
-    `/predictions/${gamePk}`,
-    {},
-    true,
-  );
+): Promise<Prediction | null> {
+  return apiFetch<Prediction | null>(`/predictions/${gamePk}`, {}, true);
+}
+
+export async function fetchModelPerformance(
+  params: ModelPerformanceParams = {},
+): Promise<ModelPerformance> {
+  const search = new URLSearchParams();
+  if (params.season != null) {
+    search.set("season", String(params.season));
+  }
+  if (params.team) {
+    search.set("team", params.team);
+  }
+  if (params.confidence_band) {
+    search.set("confidence_band", params.confidence_band);
+  }
+  if (params.confidence_min != null) {
+    search.set("confidence_min", String(params.confidence_min));
+  }
+  if (params.confidence_max != null) {
+    search.set("confidence_max", String(params.confidence_max));
+  }
+  if (params.model_version_id != null) {
+    search.set("model_version_id", String(params.model_version_id));
+  }
+  const query = search.toString();
+  const path = query ? `/model/performance?${query}` : "/model/performance";
+  return apiFetch<ModelPerformance>(path, {}, true);
 }
 
 export function logout(): void {
