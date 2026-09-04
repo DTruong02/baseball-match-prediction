@@ -92,6 +92,24 @@ def test_sync_live_game_updates_state_and_inserts_events(
 
 
 @patch("baseball_backend.services.live_ingestion.fetch_live_feed", return_value=LIVE_FEED)
+@patch("baseball_backend.services.live_ingestion.cache_live_state")
+def test_sync_live_game_caches_live_state(
+    mock_cache: object,
+    _mock_feed: object,
+    db_session: Session,
+) -> None:
+    _seed_game(db_session)
+
+    sync_live_game(db_session, 824239)
+
+    mock_cache.assert_called_once()
+    args, kwargs = mock_cache.call_args
+    assert args[0] == 824239
+    assert args[1].home_score == 3
+    assert kwargs["events_inserted"] == 8
+
+
+@patch("baseball_backend.services.live_ingestion.fetch_live_feed", return_value=LIVE_FEED)
 def test_sync_live_game_is_idempotent_for_events(
     _mock_feed: object,
     db_session: Session,

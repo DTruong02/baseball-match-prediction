@@ -7,6 +7,7 @@ from baseball_backend.routes.auth import router as auth_router
 from baseball_backend.routes.games import router as games_router
 from baseball_backend.routes.model import router as model_router
 from baseball_backend.routes.predictions import router as predictions_router
+from baseball_backend.redis_client import ping_redis
 from baseball_backend.settings import get_settings
 
 app = FastAPI(title="Baseball Intelligence API", version="0.1.0")
@@ -35,9 +36,14 @@ def health() -> dict[str, object]:
     except PackageNotFoundError:
         ml_version = None
 
+    redis_configured = settings.redis_enabled
+    redis_ok = ping_redis() if redis_configured else None
+
     return {
         "status": "ok",
         "database_configured": bool(settings.database_url),
+        "redis_configured": redis_configured,
+        "redis_ok": redis_ok,
         "ml_package_version": ml_version,
     }
 

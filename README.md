@@ -137,10 +137,10 @@ Park factors are static defaults in `data/park_data.py`; refresh from FanGraphs 
 
 Local Postgres and a FastAPI skeleton live under `backend/`. The API depends on the editable `baseball-analyze` package.
 
-**Start Postgres:**
+**Start Postgres and Redis:**
 
 ```bash
-docker compose up -d db
+docker compose up -d db redis
 ```
 
 **Install and run the API** (from repo root):
@@ -166,7 +166,9 @@ cd backend
 alembic upgrade head
 ```
 
-Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`.
+Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`, `REDIS_URL`, `REDIS_ENABLED`, `LIVE_CACHE_TTL_COMPLETED_SECONDS`, `LIVE_PUBSUB_ENABLED`.
+
+The live worker (`baseball-live-worker`) writes current game state to Redis after each poll. Completed games expire from the cache after `LIVE_CACHE_TTL_COMPLETED_SECONDS` (default 1 hour). When `LIVE_PUBSUB_ENABLED` is true, updates are published on `live:game:{game_pk}:updates` for API/WebSocket fan-out.
 
 ### Model registry (Stage 3)
 

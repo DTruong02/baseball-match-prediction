@@ -16,6 +16,7 @@ from baseball_analyze.data.mlb_client import (
     fetch_schedule_for_date,
 )
 from baseball_backend.db.models import Game, GameEvent
+from baseball_backend.services.live_cache import cache_live_state
 from baseball_backend.services.live_normalize import (
     GameLiveState,
     NormalizedGameEvent,
@@ -120,6 +121,7 @@ def sync_live_game(db: Session, game_pk: int) -> dict[str, Any]:
     inserted = _insert_events(db, game_pk, events, existing_ids)
 
     db.commit()
+    cache_live_state(game_pk, state, events_inserted=inserted)
     return {
         "game_pk": game_pk,
         "events_inserted": inserted,
