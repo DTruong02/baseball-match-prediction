@@ -8,22 +8,30 @@ from datetime import date
 
 from baseball_backend.db.session import get_session_factory
 from baseball_backend.services.live_ingestion import sync_live_games_for_date
+from baseball_backend.services.live_rate_limit import PollRateLimiter
 from baseball_backend.settings import get_settings
 
 
-def _run_once(game_date: str, game_delay_seconds: float) -> None:
+def _run_once(
+    game_date: str,
+    *,
+    rate_limiter: PollRateLimiter,
+) -> int:
+    """Run one poll cycle. Returns the number of failed game syncs."""
     session = get_session_factory()()
     try:
         summaries = sync_live_games_for_date(
             session,
             game_date,
-            game_delay_seconds=game_delay_seconds,
+            rate_limiter=rate_limiter,
         )
         if not summaries:
             print(f"No live games to poll for {game_date}")
-            return
+            return 0
+        failures = 0
         for summary in summaries:
             if "error" in summary:
+                failures += 1
                 print(
                     f"game_pk={summary['game_pk']}: error={summary['error']}"
                 )
@@ -33,6 +41,7 @@ def _run_once(game_date: str, game_delay_seconds: float) -> None:
                     f"status={summary['status']} "
                     f"events_inserted={summary['events_inserted']}"
                 )
+        return failures
     finally:
         session.close()
 
@@ -66,17 +75,32 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    min_request_interval = max(
+        args.game_delay,
+        settings.live_poll_min_request_interval_seconds,
+    )
+    rate_limiter = PollRateLimiter(min_request_interval)
+
     if args.once:
-        _run_once(args.date, args.game_delay)
+        _run_once(args.date, rate_limiter=rate_limiter)
         return
 
     print(
         f"Starting live worker for {args.date} "
-        f"(interval={args.interval}s, game_delay={args.game_delay}s)"
+        f"(interval={args.interval}s, "
+        f"min_request_interval={min_request_interval}s)"
     )
+    consecutive_failures = 0
     while True:
-        _run_once(args.date, args.game_delay)
-        time.sleep(args.interval)
+        failures = _run_once(args.date, rate_limiter=rate_limiter)
+        if failures > 0:
+            consecutive_failures += 1
+            # Back off the next cycle when MLB is unhealthy.
+            sleep_for = args.interval * (2 ** min(consecutive_failures - 1, 3))
+        else:
+            consecutive_failures = 0
+            sleep_for = args.interval
+        time.sleep(sleep_for)
 
 
 if __name__ == "__main__":

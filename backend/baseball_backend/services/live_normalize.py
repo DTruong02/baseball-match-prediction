@@ -86,6 +86,7 @@ def normalize_game_state(
 
 
 def _play_event_id(at_bat_index: int) -> str:
+    """Stable MLB play id derived from ``about.atBatIndex`` for dedupe."""
     return f"play-{at_bat_index}"
 
 

@@ -28,6 +28,17 @@ def _team_id_abbrev_lookup() -> dict[int, str]:
     return _team_id_to_abbrev
 
 
+def _retry_after_seconds(response: httpx.Response, fallback_s: float) -> float:
+    """Prefer Retry-After when present; otherwise use exponential backoff fallback."""
+    header = response.headers.get("Retry-After")
+    if header is not None:
+        try:
+            return max(0.0, float(header))
+        except ValueError:
+            pass
+    return max(0.0, fallback_s)
+
+
 def _get(
     path: str,
     params: Optional[Dict[str, Any]] = None,
@@ -39,23 +50,34 @@ def _get(
     """
     GET JSON from MLB Stats API with a hard timeout and simple retries.
 
-    This is intentionally conservative to avoid indefinite hangs during training.
+    Retries transient transport errors and HTTP 429/5xx. Honors Retry-After on
+    429 when provided. Non-retryable 4xx responses fail immediately.
     """
     last_exc: Optional[Exception] = None
     for attempt in range(retries + 1):
         try:
             with httpx.Client(timeout=timeout_s) as client:
                 r = client.get(f"{BASE}{path}", params=params)
-                if r.status_code != 200:
-                    raise MLBAPIError(
-                        f"MLB API {path} failed: {r.status_code} {r.text[:200]}"
-                    )
-                return r.json()
-        except (httpx.HTTPError, MLBAPIError) as e:
+                if r.status_code == 200:
+                    return r.json()
+
+                retryable = r.status_code == 429 or r.status_code >= 500
+                message = f"MLB API {path} failed: {r.status_code} {r.text[:200]}"
+                if not retryable or attempt >= retries:
+                    raise MLBAPIError(message)
+
+                delay = _retry_after_seconds(r, backoff_s * (2**attempt))
+                time.sleep(delay)
+                last_exc = MLBAPIError(message)
+                continue
+        except httpx.HTTPError as e:
             last_exc = e
             if attempt >= retries:
                 break
             time.sleep(backoff_s * (2**attempt))
+        except MLBAPIError as e:
+            last_exc = e
+            break
     raise MLBAPIError(f"MLB API {path} failed after retries: {last_exc}")
 
 

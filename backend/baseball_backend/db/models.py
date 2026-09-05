@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any, Optional
 
 from sqlalchemy import (
+    JSON,
     Date,
     DateTime,
     Float,
@@ -121,6 +122,7 @@ class Game(Base):
     home_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     away_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     winner: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    live_state: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

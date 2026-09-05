@@ -18,6 +18,7 @@ from baseball_backend.redis_client import get_redis_client
 from baseball_backend.services.live_cache import (
     LIVE_UPDATE_CHANNEL_PATTERN,
     get_cached_live_state,
+    get_live_feed_health,
     parse_game_pk_from_channel,
 )
 from baseball_backend.settings import get_settings
@@ -50,11 +51,99 @@ def envelope(
     return payload
 
 
+def _parse_updated_at(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    return None
+
+
+def is_live_payload_stale(
+    payload: dict[str, Any] | None,
+    *,
+    stale_after_seconds: float | None = None,
+    now: datetime | None = None,
+) -> bool:
+    """Return True when an in-progress payload is older than the stale threshold."""
+    if payload is None:
+        return True
+    settings = get_settings()
+    threshold = (
+        settings.live_stale_after_seconds
+        if stale_after_seconds is None
+        else stale_after_seconds
+    )
+    if threshold <= 0:
+        return False
+
+    status = str(payload.get("status") or "")
+    detailed = str(payload.get("detailed_state") or "")
+    if status == "Final" or detailed in {"Final", "Game Over", "Completed Early"}:
+        return False
+
+    updated_at = _parse_updated_at(payload.get("updated_at"))
+    if updated_at is None:
+        return False
+
+    current = now or datetime.now(timezone.utc)
+    age = (current - updated_at).total_seconds()
+    return age > threshold
+
+
+def is_live_feed_degraded() -> bool:
+    """True when the live worker last reported an MLB feed outage."""
+    health = get_live_feed_health()
+    if health is None:
+        return False
+    return health.get("ok") is False
+
+
+def snapshot_is_degraded(payload: dict[str, Any] | None, *, source: str | None) -> bool:
+    """Decide whether clients should show the live-data-degraded banner."""
+    if source != "redis":
+        return True
+    if is_live_feed_degraded():
+        return True
+    return is_live_payload_stale(payload)
+
+
 def postgres_live_snapshot(db: Session, game_pk: int) -> dict[str, Any] | None:
     """Build a degraded scoreboard snapshot from the last Postgres game row."""
     game = db.scalar(select(Game).where(Game.game_pk == game_pk))
     if game is None:
         return None
+
+    stored = game.live_state if isinstance(game.live_state, dict) else None
+    if stored is not None:
+        snapshot = dict(stored)
+        snapshot["game_pk"] = game.game_pk
+        # Prefer authoritative score/status columns when present.
+        if game.home_score is not None:
+            snapshot["home_score"] = game.home_score
+        if game.away_score is not None:
+            snapshot["away_score"] = game.away_score
+        snapshot["status"] = game.status
+        snapshot["detailed_state"] = game.detailed_state
+        if snapshot.get("updated_at") is None:
+            updated_at = game.updated_at
+            if isinstance(updated_at, datetime) and updated_at.tzinfo is None:
+                updated_at = updated_at.replace(tzinfo=timezone.utc)
+            snapshot["updated_at"] = (
+                updated_at.isoformat() if updated_at is not None else None
+            )
+        return snapshot
+
     updated_at = game.updated_at
     if isinstance(updated_at, datetime) and updated_at.tzinfo is None:
         updated_at = updated_at.replace(tzinfo=timezone.utc)
@@ -82,11 +171,12 @@ def resolve_live_snapshot(
     """
     Prefer Redis live state; fall back to Postgres.
 
-    Returns ``(payload, source, degraded)``.
+    Returns ``(payload, source, degraded)``. Degraded is true when Redis is
+    unavailable, the MLB feed is unhealthy, or the cached payload is stale.
     """
     cached = get_cached_live_state(game_pk)
     if cached is not None:
-        return cached, "redis", False
+        return cached, "redis", snapshot_is_degraded(cached, source="redis")
 
     snapshot = postgres_live_snapshot(db, game_pk)
     if snapshot is not None:
@@ -269,7 +359,13 @@ async def run_live_pubsub_fanout(
 
             await manager.broadcast_game_update(
                 game_pk,
-                envelope("update", game_pk=game_pk, data=data, source="redis"),
+                envelope(
+                    "update",
+                    game_pk=game_pk,
+                    data=data,
+                    source="redis",
+                    degraded=snapshot_is_degraded(data, source="redis"),
+                ),
             )
     except asyncio.CancelledError:
         raise
@@ -310,7 +406,13 @@ async def poll_live_state_updates(
             last_payloads[game_pk] = encoded
             try:
                 await websocket.send_json(
-                    envelope("update", game_pk=game_pk, data=data, source="redis")
+                    envelope(
+                        "update",
+                        game_pk=game_pk,
+                        data=data,
+                        source="redis",
+                        degraded=snapshot_is_degraded(data, source="redis"),
+                    )
                 )
             except Exception:
                 return

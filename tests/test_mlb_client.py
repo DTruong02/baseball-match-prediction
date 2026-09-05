@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from baseball_analyze.data.mlb_client import _parse_game, fetch_live_feed
+import pytest
+
+from baseball_analyze.data.mlb_client import MLBAPIError, _get, _parse_game, fetch_live_feed
 
 FIXTURE = Path(__file__).parent / "fixtures" / "schedule_game.json"
 
@@ -30,7 +32,7 @@ def test_fetch_live_feed_fallback_assembles_payload(
     mock_schedule: object,
     mock_get: object,
 ) -> None:
-    from baseball_analyze.data.mlb_client import ScheduledGame, fetch_live_feed
+    from baseball_analyze.data.mlb_client import ScheduledGame
 
     mock_schedule.return_value = ScheduledGame(
         game_pk=824239,
@@ -49,8 +51,6 @@ def test_fetch_live_feed_fallback_assembles_payload(
 
     def _get_side_effect(path: str, params=None, **kwargs):  # type: ignore[no-untyped-def]
         if path.endswith("/feed/live"):
-            from baseball_analyze.data.mlb_client import MLBAPIError
-
             raise MLBAPIError("not found")
         if path.endswith("/playByPlay"):
             return {"allPlays": [{"about": {"atBatIndex": 0}, "result": {"event": "Single"}}]}
@@ -67,3 +67,52 @@ def test_fetch_live_feed_fallback_assembles_payload(
     assert feed["gameData"]["status"]["detailedState"] == "Final"
     assert len(feed["liveData"]["plays"]["allPlays"]) == 1
     assert feed["liveData"]["linescore"]["currentInning"] == 9
+
+
+def test_get_retries_on_429_with_retry_after() -> None:
+    response_429 = MagicMock()
+    response_429.status_code = 429
+    response_429.text = "rate limited"
+    response_429.headers = {"Retry-After": "0.01"}
+
+    response_ok = MagicMock()
+    response_ok.status_code = 200
+    response_ok.json.return_value = {"ok": True}
+    response_ok.headers = {}
+
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.get.side_effect = [response_429, response_ok]
+
+    with (
+        patch("baseball_analyze.data.mlb_client.httpx.Client", return_value=client),
+        patch("baseball_analyze.data.mlb_client.time.sleep") as mock_sleep,
+    ):
+        payload = _get("/teams", retries=1, backoff_s=0.5)
+
+    assert payload == {"ok": True}
+    mock_sleep.assert_called_once()
+    assert mock_sleep.call_args.args[0] == pytest.approx(0.01)
+
+
+def test_get_does_not_retry_client_errors() -> None:
+    response_404 = MagicMock()
+    response_404.status_code = 404
+    response_404.text = "missing"
+    response_404.headers = {}
+
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.get.return_value = response_404
+
+    with (
+        patch("baseball_analyze.data.mlb_client.httpx.Client", return_value=client),
+        patch("baseball_analyze.data.mlb_client.time.sleep") as mock_sleep,
+    ):
+        with pytest.raises(MLBAPIError, match="404"):
+            _get("/teams", retries=2, backoff_s=0.01)
+
+    mock_sleep.assert_not_called()
+    assert client.get.call_count == 1

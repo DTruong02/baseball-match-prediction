@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 LIVE_STATE_KEY_PREFIX = "live:game:"
 LIVE_UPDATE_CHANNEL_SUFFIX = ":updates"
 LIVE_UPDATE_CHANNEL_PATTERN = f"{LIVE_STATE_KEY_PREFIX}*{LIVE_UPDATE_CHANNEL_SUFFIX}"
+LIVE_FEED_HEALTH_KEY = "live:feed:health"
 
 
 def live_state_key(game_pk: int) -> str:
@@ -108,6 +109,20 @@ class LiveStateCache:
             return None
         return json.loads(raw)
 
+    def set_feed_health(self, *, ok: bool, error: str | None = None) -> None:
+        payload = {
+            "ok": ok,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "error": error,
+        }
+        self._redis.set(LIVE_FEED_HEALTH_KEY, json.dumps(payload))
+
+    def get_feed_health(self) -> dict[str, Any] | None:
+        raw = self._redis.get(LIVE_FEED_HEALTH_KEY)
+        if raw is None:
+            return None
+        return json.loads(raw)
+
 
 @lru_cache
 def get_live_state_cache() -> LiveStateCache | None:
@@ -157,4 +172,27 @@ def get_cached_live_state(game_pk: int) -> dict[str, Any] | None:
         return cache.get(game_pk)
     except Exception:
         logger.exception("Failed to read live state for game_pk=%s", game_pk)
+        return None
+
+
+def set_live_feed_health(*, ok: bool, error: str | None = None) -> None:
+    """Record whether the live worker can reach MLB. Failures are swallowed."""
+    cache = get_live_state_cache()
+    if cache is None:
+        return
+    try:
+        cache.set_feed_health(ok=ok, error=error)
+    except Exception:
+        logger.exception("Failed to write live feed health")
+
+
+def get_live_feed_health() -> dict[str, Any] | None:
+    """Return the latest live-feed health marker, or ``None`` if unavailable."""
+    cache = get_live_state_cache()
+    if cache is None:
+        return None
+    try:
+        return cache.get_feed_health()
+    except Exception:
+        logger.exception("Failed to read live feed health")
         return None

@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from baseball_analyze.data.mlb_client import ScheduledGame
+from baseball_analyze.data.mlb_client import MLBAPIError, ScheduledGame
 from baseball_backend.db.base import Base
 from baseball_backend.db.models import Game, GameEvent, Team
 from baseball_backend.services.live_ingestion import (
@@ -93,20 +93,45 @@ def test_sync_live_game_updates_state_and_inserts_events(
 
 @patch("baseball_backend.services.live_ingestion.fetch_live_feed", return_value=LIVE_FEED)
 @patch("baseball_backend.services.live_ingestion.cache_live_state")
-def test_sync_live_game_caches_live_state(
+def test_sync_live_game_persists_live_state_snapshot(
     mock_cache: object,
     _mock_feed: object,
     db_session: Session,
 ) -> None:
     _seed_game(db_session)
 
-    sync_live_game(db_session, 824239)
+    sync_live_game(db_session, 824239, retries=0)
 
+    game = db_session.scalar(select(Game).where(Game.game_pk == 824239))
+    assert game is not None
+    assert game.live_state is not None
+    assert game.live_state["home_score"] == 3
+    assert game.live_state["away_score"] == 4
+    assert game.live_state["current_inning"] is not None
     mock_cache.assert_called_once()
     args, kwargs = mock_cache.call_args
     assert args[0] == 824239
     assert args[1].home_score == 3
     assert kwargs["events_inserted"] == 8
+
+
+@patch(
+    "baseball_backend.services.live_ingestion.fetch_live_feed",
+    side_effect=MLBAPIError("boom"),
+)
+@patch("baseball_backend.services.live_ingestion.time.sleep")
+def test_sync_live_game_retries_mlb_errors(
+    mock_sleep: object,
+    mock_feed: object,
+    db_session: Session,
+) -> None:
+    _seed_game(db_session)
+
+    with pytest.raises(MLBAPIError):
+        sync_live_game(db_session, 824239, retries=2, backoff_seconds=0.01)
+
+    assert mock_feed.call_count == 3
+    assert mock_sleep.call_count == 2
 
 
 @patch("baseball_backend.services.live_ingestion.fetch_live_feed", return_value=LIVE_FEED)

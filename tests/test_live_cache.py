@@ -111,6 +111,17 @@ def test_live_state_cache_get_round_trip() -> None:
     assert cache.get(999) is None
 
 
+def test_live_state_cache_feed_health_round_trip() -> None:
+    redis = FakeRedis()
+    cache = LiveStateCache(redis, ttl_completed_seconds=3600, pubsub_enabled=False)
+    cache.set_feed_health(ok=False, error="MLB timeout")
+    health = cache.get_feed_health()
+    assert health is not None
+    assert health["ok"] is False
+    assert health["error"] == "MLB timeout"
+    assert "updated_at" in health
+
+
 @pytest.mark.parametrize(
     ("pubsub_enabled", "expected_count"),
     [(True, 1), (False, 0)],

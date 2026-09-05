@@ -1,7 +1,7 @@
 """Tests for live scoreboard and event REST endpoints (WS polling fallback)."""
 
 from collections.abc import Generator
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 from unittest.mock import patch
 
@@ -37,7 +37,7 @@ def _sample_live_payload(game_pk: int = 778001) -> dict[str, Any]:
         "balls": 2,
         "strikes": 0,
         "events_inserted": 1,
-        "updated_at": "2025-04-06T18:30:00+00:00",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -155,9 +155,15 @@ def test_get_live_requires_auth(client: TestClient) -> None:
 
 def test_get_live_from_redis_cache(client: TestClient, auth_headers: dict[str, str]) -> None:
     payload = _sample_live_payload()
-    with patch(
-        "baseball_backend.services.live_ws.get_cached_live_state",
-        return_value=payload,
+    with (
+        patch(
+            "baseball_backend.services.live_ws.get_cached_live_state",
+            return_value=payload,
+        ),
+        patch(
+            "baseball_backend.services.live_ws.get_live_feed_health",
+            return_value={"ok": True},
+        ),
     ):
         response = client.get("/games/778001/live", headers=auth_headers)
     assert response.status_code == 200

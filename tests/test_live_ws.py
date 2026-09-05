@@ -6,7 +6,7 @@ import asyncio
 import json
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -30,6 +30,7 @@ from baseball_backend.services.live_cache import (
 from baseball_backend.services.live_ws import (
     LiveConnectionManager,
     envelope,
+    is_live_payload_stale,
     postgres_live_snapshot,
     resolve_live_snapshot,
     run_live_pubsub_fanout,
@@ -56,7 +57,7 @@ def _sample_live_payload(game_pk: int = 824239) -> dict[str, Any]:
         "balls": 2,
         "strikes": 0,
         "events_inserted": 3,
-        "updated_at": "2025-04-06T18:30:00+00:00",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -185,6 +186,94 @@ def test_postgres_live_snapshot(db_session: Session) -> None:
     assert snapshot["current_inning"] is None
 
 
+def test_postgres_live_snapshot_uses_stored_live_state(db_session: Session) -> None:
+    from sqlalchemy import select
+
+    game = db_session.scalar(select(Game).where(Game.game_pk == 824239))
+    assert game is not None
+    game.live_state = {
+        "game_pk": 824239,
+        "home_score": 3,
+        "away_score": 2,
+        "status": "Live",
+        "detailed_state": "In Progress",
+        "current_inning": 7,
+        "inning_state": "Bottom",
+        "is_top_inning": False,
+        "outs": 2,
+        "balls": 1,
+        "strikes": 2,
+        "events_inserted": 12,
+        "updated_at": "2026-09-05T18:00:00+00:00",
+    }
+    db_session.commit()
+
+    snapshot = postgres_live_snapshot(db_session, 824239)
+    assert snapshot is not None
+    assert snapshot["current_inning"] == 7
+    assert snapshot["outs"] == 2
+    assert snapshot["strikes"] == 2
+
+
+def test_is_live_payload_stale() -> None:
+    fresh = _sample_live_payload()
+    assert is_live_payload_stale(fresh, stale_after_seconds=90) is False
+
+    stale = _sample_live_payload()
+    stale["updated_at"] = (
+        datetime.now(timezone.utc) - timedelta(minutes=10)
+    ).isoformat()
+    assert is_live_payload_stale(stale, stale_after_seconds=90) is True
+
+    final_payload = _sample_live_payload()
+    final_payload["status"] = "Final"
+    final_payload["updated_at"] = (
+        datetime.now(timezone.utc) - timedelta(hours=2)
+    ).isoformat()
+    assert is_live_payload_stale(final_payload, stale_after_seconds=90) is False
+
+
+def test_resolve_live_snapshot_marks_stale_redis_as_degraded(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cached = _sample_live_payload()
+    cached["updated_at"] = (
+        datetime.now(timezone.utc) - timedelta(minutes=10)
+    ).isoformat()
+    monkeypatch.setattr(
+        "baseball_backend.services.live_ws.get_cached_live_state",
+        lambda _game_pk: cached,
+    )
+    monkeypatch.setattr(
+        "baseball_backend.services.live_ws.get_live_feed_health",
+        lambda: {"ok": True},
+    )
+    data, source, degraded = resolve_live_snapshot(db_session, 824239)
+    assert data == cached
+    assert source == "redis"
+    assert degraded is True
+
+
+def test_resolve_live_snapshot_marks_mlb_outage_as_degraded(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cached = _sample_live_payload()
+    monkeypatch.setattr(
+        "baseball_backend.services.live_ws.get_cached_live_state",
+        lambda _game_pk: cached,
+    )
+    monkeypatch.setattr(
+        "baseball_backend.services.live_ws.get_live_feed_health",
+        lambda: {"ok": False, "error": "MLB down"},
+    )
+    data, source, degraded = resolve_live_snapshot(db_session, 824239)
+    assert data == cached
+    assert source == "redis"
+    assert degraded is True
+
+
 def test_resolve_live_snapshot_prefers_redis(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -193,6 +282,10 @@ def test_resolve_live_snapshot_prefers_redis(
     monkeypatch.setattr(
         "baseball_backend.services.live_ws.get_cached_live_state",
         lambda _game_pk: cached,
+    )
+    monkeypatch.setattr(
+        "baseball_backend.services.live_ws.get_live_feed_health",
+        lambda: {"ok": True},
     )
     data, source, degraded = resolve_live_snapshot(db_session, 824239)
     assert data == cached
@@ -345,6 +438,10 @@ def test_ws_game_sends_redis_snapshot(
     monkeypatch.setattr(
         "baseball_backend.services.live_ws.get_cached_live_state",
         lambda _game_pk: cached,
+    )
+    monkeypatch.setattr(
+        "baseball_backend.services.live_ws.get_live_feed_health",
+        lambda: {"ok": True},
     )
     with client.websocket_connect(f"/ws/games/824239?token={auth_token}") as ws:
         message = ws.receive_json()
