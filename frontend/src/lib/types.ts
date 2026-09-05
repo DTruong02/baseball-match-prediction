@@ -86,3 +86,68 @@ export interface ModelPerformanceParams {
   confidence_max?: number;
   model_version_id?: number;
 }
+
+export interface LiveState {
+  game_pk: number;
+  home_score: number;
+  away_score: number;
+  status: string;
+  detailed_state: string;
+  current_inning: number | null;
+  inning_state: string | null;
+  is_top_inning: boolean | null;
+  outs: number | null;
+  balls: number | null;
+  strikes: number | null;
+  events_inserted: number;
+  updated_at: string | null;
+}
+
+export interface LiveSnapshot {
+  data: LiveState | null;
+  source: "redis" | "postgres" | null;
+  degraded: boolean;
+}
+
+export interface GameEventPayload {
+  inning?: number | null;
+  half_inning?: string | null;
+  is_top_inning?: boolean | null;
+  is_scoring_play?: boolean | null;
+  is_complete?: boolean | null;
+  event?: string | null;
+  event_type?: string | null;
+  description?: string | null;
+  rbi?: number | null;
+  away_score?: number | null;
+  home_score?: number | null;
+  batter_name?: string | null;
+  pitcher_name?: string | null;
+  [key: string]: unknown;
+}
+
+export interface GameEvent {
+  id: number;
+  game_pk: number;
+  event_id: string;
+  type: string;
+  payload: GameEventPayload;
+  sequence: number;
+  ingested_at: string;
+}
+
+export type LiveConnectionStatus =
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "polling"
+  | "offline";
+
+export interface LiveWsMessage {
+  type: "snapshot" | "update" | "slate_snapshot";
+  game_pk?: number;
+  date?: string;
+  data: LiveState | LiveWsMessage[] | null;
+  source: "redis" | "postgres" | null;
+  degraded: boolean;
+}

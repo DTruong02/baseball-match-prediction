@@ -61,7 +61,7 @@ export function GameCard({
         </p>
       ) : null}
       <p className="mt-3 text-xs text-accent opacity-0 transition-opacity group-hover:opacity-100">
-        View game details →
+        View live game →
       </p>
     </Link>
   );

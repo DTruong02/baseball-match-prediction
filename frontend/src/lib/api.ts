@@ -6,6 +6,8 @@ import {
 import type {
   ApiErrorBody,
   Game,
+  GameEvent,
+  LiveSnapshot,
   ModelPerformance,
   ModelPerformanceParams,
   Prediction,
@@ -16,6 +18,15 @@ import type {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
   "http://localhost:8000";
+
+export function getApiBaseUrl(): string {
+  return API_BASE;
+}
+
+export function liveGameWebSocketUrl(gamePk: number, token: string): string {
+  const wsBase = API_BASE.replace(/^http/, "ws");
+  return `${wsBase}/ws/games/${gamePk}?token=${encodeURIComponent(token)}`;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -125,6 +136,21 @@ export async function fetchPrediction(
   gamePk: number,
 ): Promise<Prediction | null> {
   return apiFetch<Prediction | null>(`/predictions/${gamePk}`, {}, true);
+}
+
+export async function fetchLiveSnapshot(gamePk: number): Promise<LiveSnapshot> {
+  return apiFetch<LiveSnapshot>(`/games/${gamePk}/live`, {}, true);
+}
+
+export async function fetchGameEvents(
+  gamePk: number,
+  limit = 100,
+): Promise<GameEvent[]> {
+  return apiFetch<GameEvent[]>(
+    `/games/${gamePk}/events?limit=${limit}`,
+    {},
+    true,
+  );
 }
 
 export async function fetchModelPerformance(

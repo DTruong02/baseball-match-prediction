@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -107,6 +107,44 @@ class ScheduleSyncResponse(BaseModel):
     date: date
     games_synced: int
     predictions_generated: int = 0
+
+
+class LiveStateRead(BaseModel):
+    """Current scoreboard snapshot from Redis or Postgres."""
+
+    game_pk: int
+    home_score: int
+    away_score: int
+    status: str
+    detailed_state: str
+    current_inning: Optional[int] = None
+    inning_state: Optional[str] = None
+    is_top_inning: Optional[bool] = None
+    outs: Optional[int] = None
+    balls: Optional[int] = None
+    strikes: Optional[int] = None
+    events_inserted: int = 0
+    updated_at: Optional[str] = None
+
+
+class LiveSnapshotRead(BaseModel):
+    """HTTP envelope matching WebSocket snapshot fields for polling fallback."""
+
+    data: Optional[LiveStateRead] = None
+    source: Optional[str] = None
+    degraded: bool = False
+
+
+class GameEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    game_pk: int
+    event_id: str
+    type: str
+    payload: dict[str, Any]
+    sequence: int
+    ingested_at: datetime
 
 
 class CalibrationBucket(BaseModel):

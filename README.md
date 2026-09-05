@@ -177,6 +177,11 @@ The live worker (`baseball-live-worker`) writes current game state to Redis afte
 
 When Redis pub/sub is disabled but Redis caching is on, the API polls the cache and forwards changes to connected clients.
 
+**Live HTTP (polling fallback for the game page):**
+
+- `GET /games/{game_pk}/live` — same scoreboard snapshot as the WS handshake (`data`, `source`, `degraded`)
+- `GET /games/{game_pk}/events` — play-by-play rows for the timeline
+
 ### Model registry (Stage 3)
 
 After training, register a versioned run in Postgres so the API can load the active pregame model for inference:
@@ -206,7 +211,8 @@ Open `http://localhost:3000`. The dev server expects the API at `http://localhos
 
 - `/login`, `/register` — JWT auth (token stored in `localStorage`)
 - `/` — schedule dashboard with date picker
-- `/games/[gamePk]` — game detail (predictions stub until Stage 3)
+- `/games/[gamePk]` — game detail with live scoreboard, play-by-play timeline, WebSocket updates (falls back to HTTP polling), and pregame prediction
+- `/model` — model performance
 - `/profile` — account shell
 
 ## Tests

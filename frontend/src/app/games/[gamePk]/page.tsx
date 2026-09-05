@@ -5,8 +5,12 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { EventTimeline } from "@/components/EventTimeline";
+import { LiveConnectionBadge } from "@/components/LiveConnectionBadge";
+import { LiveScoreboard } from "@/components/LiveScoreboard";
 import { PredictionDisplay } from "@/components/PredictionDisplay";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { useLiveGame } from "@/hooks/useLiveGame";
 import { ApiError, fetchGame, fetchPrediction } from "@/lib/api";
 import type { Game, Prediction } from "@/lib/types";
 
@@ -23,6 +27,10 @@ export default function GameDetailPage() {
   const [loading, setLoading] = useState(!invalidGamePk);
   const [error, setError] = useState<string | null>(
     invalidGamePk ? "Invalid game id." : null,
+  );
+
+  const { live, events, connectionStatus, degraded } = useLiveGame(
+    invalidGamePk ? null : gamePk,
   );
 
   useEffect(() => {
@@ -86,10 +94,17 @@ export default function GameDetailPage() {
             </p>
           ) : game ? (
             <>
-              <header className="space-y-2">
-                <p className="text-sm text-muted">
-                  {game.game_date} · {game.detailed_state}
-                </p>
+              <header className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-muted">
+                    {game.game_date} ·{" "}
+                    {live?.detailed_state ?? game.detailed_state}
+                  </p>
+                  <LiveConnectionBadge
+                    status={connectionStatus}
+                    degraded={degraded}
+                  />
+                </div>
                 <h1 className="text-2xl font-semibold tracking-tight">
                   {teamLabel(game.away_team)} at {teamLabel(game.home_team)}
                 </h1>
@@ -97,6 +112,10 @@ export default function GameDetailPage() {
                   <p className="text-sm text-muted">{game.venue_name}</p>
                 ) : null}
               </header>
+
+              <LiveScoreboard game={game} live={live} />
+
+              <EventTimeline events={events} />
 
               <section className="rounded-xl border border-border bg-surface p-6">
                 <h2 className="text-sm font-medium text-muted">Matchup</h2>
@@ -110,7 +129,6 @@ export default function GameDetailPage() {
                     </p>
                     <p className="text-sm text-muted">
                       {game.away_team.abbreviation}
-                      {game.away_score != null ? ` · ${game.away_score} runs` : ""}
                     </p>
                     <p className="mt-2 text-sm text-muted">
                       SP: {game.away_probable_pitcher?.full_name ?? "TBD"}
@@ -125,7 +143,6 @@ export default function GameDetailPage() {
                     </p>
                     <p className="text-sm text-muted">
                       {game.home_team.abbreviation}
-                      {game.home_score != null ? ` · ${game.home_score} runs` : ""}
                     </p>
                     <p className="mt-2 text-sm text-muted">
                       SP: {game.home_probable_pitcher?.full_name ?? "TBD"}
@@ -135,7 +152,9 @@ export default function GameDetailPage() {
               </section>
 
               <section className="rounded-xl border border-border bg-surface p-6">
-                <h2 className="text-sm font-medium text-muted">Pregame prediction</h2>
+                <h2 className="text-sm font-medium text-muted">
+                  Pregame prediction
+                </h2>
                 {prediction ? (
                   <PredictionDisplay
                     game={game}
