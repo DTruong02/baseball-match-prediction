@@ -170,6 +170,13 @@ Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_H
 
 The live worker (`baseball-live-worker`) writes current game state to Redis after each poll. Completed games expire from the cache after `LIVE_CACHE_TTL_COMPLETED_SECONDS` (default 1 hour). When `LIVE_PUBSUB_ENABLED` is true, updates are published on `live:game:{game_pk}:updates` for API/WebSocket fan-out.
 
+**Live WebSockets** (authenticated via `?token=` JWT query param):
+
+- `WS /ws/games/{game_pk}` — initial scoreboard snapshot (Redis, or Postgres if cache miss), then live updates (score, inning, outs, count, status)
+- `WS /ws/live?date=YYYY-MM-DD` — same for all games on a date slate (`slate_snapshot` then per-game `update` messages)
+
+When Redis pub/sub is disabled but Redis caching is on, the API polls the cache and forwards changes to connected clients.
+
 ### Model registry (Stage 3)
 
 After training, register a versioned run in Postgres so the API can load the active pregame model for inference:

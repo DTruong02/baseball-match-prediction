@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 LIVE_STATE_KEY_PREFIX = "live:game:"
 LIVE_UPDATE_CHANNEL_SUFFIX = ":updates"
+LIVE_UPDATE_CHANNEL_PATTERN = f"{LIVE_STATE_KEY_PREFIX}*{LIVE_UPDATE_CHANNEL_SUFFIX}"
 
 
 def live_state_key(game_pk: int) -> str:
@@ -24,6 +25,19 @@ def live_state_key(game_pk: int) -> str:
 
 def live_update_channel(game_pk: int) -> str:
     return f"{LIVE_STATE_KEY_PREFIX}{game_pk}{LIVE_UPDATE_CHANNEL_SUFFIX}"
+
+
+def parse_game_pk_from_channel(channel: str) -> int | None:
+    """Extract ``game_pk`` from ``live:game:{game_pk}:updates``."""
+    prefix = LIVE_STATE_KEY_PREFIX
+    suffix = LIVE_UPDATE_CHANNEL_SUFFIX
+    if not channel.startswith(prefix) or not channel.endswith(suffix):
+        return None
+    middle = channel[len(prefix) : -len(suffix)]
+    try:
+        return int(middle)
+    except ValueError:
+        return None
 
 
 def serialize_live_state(
@@ -126,4 +140,21 @@ def cache_live_state(
         return cache.store(game_pk, state, events_inserted=events_inserted)
     except Exception:
         logger.exception("Failed to cache live state for game_pk=%s", game_pk)
+        return None
+
+
+def get_cached_live_state(game_pk: int) -> dict[str, Any] | None:
+    """
+    Read current live state from Redis.
+
+    Failures are logged and swallowed; returns ``None`` when Redis is
+    unavailable or the key is missing.
+    """
+    cache = get_live_state_cache()
+    if cache is None:
+        return None
+    try:
+        return cache.get(game_pk)
+    except Exception:
+        logger.exception("Failed to read live state for game_pk=%s", game_pk)
         return None

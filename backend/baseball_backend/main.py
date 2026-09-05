@@ -1,4 +1,7 @@
+import asyncio
+from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
+from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,10 +10,27 @@ from baseball_backend.routes.auth import router as auth_router
 from baseball_backend.routes.games import router as games_router
 from baseball_backend.routes.model import router as model_router
 from baseball_backend.routes.predictions import router as predictions_router
+from baseball_backend.routes.ws import router as ws_router
 from baseball_backend.redis_client import ping_redis
+from baseball_backend.services.live_ws import configure_live_fanout, shutdown_live_fanout
 from baseball_backend.settings import get_settings
 
-app = FastAPI(title="Baseball Intelligence API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    stop_event = asyncio.Event()
+    configure_live_fanout(stop_event)
+    try:
+        yield
+    finally:
+        await shutdown_live_fanout()
+
+
+app = FastAPI(
+    title="Baseball Intelligence API",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -25,6 +45,7 @@ app.include_router(auth_router)
 app.include_router(games_router)
 app.include_router(model_router)
 app.include_router(predictions_router)
+app.include_router(ws_router)
 
 
 @app.get("/health")

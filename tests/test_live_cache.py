@@ -8,9 +8,11 @@ from typing import Any
 import pytest
 
 from baseball_backend.services.live_cache import (
+    LIVE_UPDATE_CHANNEL_PATTERN,
     LiveStateCache,
     live_state_key,
     live_update_channel,
+    parse_game_pk_from_channel,
     serialize_live_state,
 )
 from baseball_backend.services.live_normalize import GameLiveState
@@ -56,6 +58,9 @@ def _sample_state(*, status: str = "Live", detailed_state: str = "In Progress") 
 def test_live_state_key_and_channel() -> None:
     assert live_state_key(824239) == "live:game:824239"
     assert live_update_channel(824239) == "live:game:824239:updates"
+    assert LIVE_UPDATE_CHANNEL_PATTERN == "live:game:*:updates"
+    assert parse_game_pk_from_channel("live:game:824239:updates") == 824239
+    assert parse_game_pk_from_channel("live:game:nope:updates") is None
 
 
 def test_serialize_live_state_includes_scoreboard_fields() -> None:
