@@ -102,6 +102,28 @@ export function LiveScoreboard({
           <CountDots label="Outs" filled={live.outs} total={3} />
         </div>
       ) : null}
+
+      {live?.home_win_proba != null && live?.away_win_proba != null ? (
+        <div className="mt-6 border-t border-border pt-4">
+          <h3 className="text-xs uppercase tracking-wide text-muted">
+            Live win probability
+          </h3>
+          <div className="mt-3 grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-muted">{game.away_team.abbreviation}</p>
+              <p className="mt-1 font-mono text-xl tabular-nums">
+                {Math.round(live.away_win_proba * 100)}%
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted">{game.home_team.abbreviation}</p>
+              <p className="mt-1 font-mono text-xl tabular-nums">
+                {Math.round(live.home_win_proba * 100)}%
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

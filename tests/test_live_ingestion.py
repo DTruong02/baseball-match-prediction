@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 
 from baseball_analyze.data.mlb_client import MLBAPIError, ScheduledGame
 from baseball_backend.db.base import Base
-from baseball_backend.db.models import Game, GameEvent, Team
+from baseball_backend.db.models import Game, GameEvent, ModelVersion, Prediction, Team
 from baseball_backend.services.live_ingestion import (
     list_live_game_pks_for_date,
     sync_live_game,
@@ -33,11 +33,18 @@ def db_session() -> Generator[Session, None, None]:
         poolclass=StaticPool,
     )
     jsonb_columns: list = []
-    for column in GameEvent.__table__.columns:
-        if isinstance(column.type, JSONB):
-            jsonb_columns.append(column)
-            column.type = JSON()
-    tables = [Team.__table__, Game.__table__, GameEvent.__table__]
+    for table in (GameEvent.__table__, ModelVersion.__table__, Prediction.__table__):
+        for column in table.columns:
+            if isinstance(column.type, JSONB):
+                jsonb_columns.append(column)
+                column.type = JSON()
+    tables = [
+        Team.__table__,
+        Game.__table__,
+        GameEvent.__table__,
+        ModelVersion.__table__,
+        Prediction.__table__,
+    ]
     Base.metadata.create_all(bind=engine, tables=tables)
     session = sessionmaker(bind=engine, autocommit=False, autoflush=False)()
     try:

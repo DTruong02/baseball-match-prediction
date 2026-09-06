@@ -10,14 +10,20 @@ from baseball_backend.db.models import Game, GameEvent, User
 from baseball_backend.db.session import get_db
 from baseball_backend.deps import get_current_user
 from baseball_backend.schemas import (
+    GameDetailRead,
     GameEventRead,
     GameRead,
     LiveSnapshotRead,
     LiveStateRead,
+    PredictionRead,
     ScheduleSyncResponse,
 )
+from baseball_backend.services.live_prediction_service import get_game_win_probabilities
 from baseball_backend.services.live_ws import resolve_live_snapshot
-from baseball_backend.services.prediction_service import generate_missing_predictions_for_date
+from baseball_backend.services.prediction_service import (
+    generate_missing_predictions_for_date,
+    get_prediction_for_game_pk,
+)
 from baseball_backend.services.schedule_sync import sync_schedule_for_date
 
 router = APIRouter(prefix="/games", tags=["games"])
@@ -106,10 +112,18 @@ def list_game_events(
     )
 
 
-@router.get("/{game_pk}", response_model=GameRead)
+@router.get("/{game_pk}", response_model=GameDetailRead)
 def get_game(
     game_pk: int,
     db: Session = Depends(get_db),
     _current_user: User = Depends(get_current_user),
-) -> Game:
-    return _require_game(db, game_pk)
+) -> GameDetailRead:
+    """Game detail with pregame line and current live win probability."""
+    game = _require_game(db, game_pk)
+    get_prediction_for_game_pk(db, game_pk)
+    pregame, live = get_game_win_probabilities(db, game_pk)
+    return GameDetailRead(
+        **GameRead.model_validate(game).model_dump(),
+        pregame_prediction=PredictionRead.from_prediction(pregame) if pregame else None,
+        live_prediction=PredictionRead.from_prediction(live) if live else None,
+    )

@@ -127,6 +127,23 @@ result = predict_game(778285, "artifacts/model.joblib")
 # home_win_proba, away_win_proba, features, model_version, notes, game_pk, ...
 ```
 
+**Live (in-game) inference** from a live feed snapshot:
+
+```python
+from baseball_analyze.models.inference import predict_in_game
+
+result = predict_in_game(
+    live_feed,
+    "artifacts/in_game_model.joblib",
+    game_pk=778285,
+    season=2025,
+    home_abbrev="NYY",
+    away_abbrev="BOS",
+)
+```
+
+The live worker re-runs this on meaningful events (runs, outs, pitching changes, end of inning), upserts a `Prediction` for the active `in_game` model, and pushes `home_win_proba` / `away_win_proba` on the Redis/WebSocket live snapshot. `GET /games/{game_pk}` returns both `pregame_prediction` and `live_prediction`.
+
 **Feature construction** (custom workflows):
 
 ```python
@@ -246,7 +263,7 @@ Open `http://localhost:3000`. The dev server expects the API at `http://localhos
 
 - `/login`, `/register` — JWT auth (token stored in `localStorage`)
 - `/` — schedule dashboard with date picker
-- `/games/[gamePk]` — game detail with live scoreboard, play-by-play timeline, WebSocket updates (falls back to HTTP polling), and pregame prediction
+- `/games/[gamePk]` — game detail with live scoreboard (including live WP when available), play-by-play timeline, WebSocket updates (falls back to HTTP polling), and pregame prediction
 - `/model` — model performance
 - `/profile` — account shell
 

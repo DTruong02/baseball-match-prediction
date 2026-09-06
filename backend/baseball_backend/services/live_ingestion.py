@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from baseball_analyze.data.mlb_client import (
     MLBAPIError,
@@ -28,6 +28,13 @@ from baseball_backend.services.live_normalize import (
     NormalizedGameEvent,
     normalize_game_state,
     normalize_play_events,
+)
+from baseball_backend.services.live_prediction_service import (
+    extract_pitcher_id,
+    generate_live_prediction_for_game,
+    get_live_prediction_for_game_pk,
+    should_run_live_inference,
+    win_probability_payload,
 )
 from baseball_backend.services.live_rate_limit import PollRateLimiter
 from baseball_backend.services.schedule_sync import _FINAL_STATES
@@ -88,14 +95,17 @@ def _insert_events(
     game_pk: int,
     events: list[NormalizedGameEvent],
     existing_ids: set[str],
-) -> int:
+) -> tuple[int, list[NormalizedGameEvent]]:
     """
     Insert new play events, skipping known ids.
 
     Uses a savepoint per insert so concurrent workers racing on the same
     ``(game_pk, event_id)`` unique constraint do not abort the whole sync.
+
+    Returns ``(inserted_count, newly_inserted_events)``.
     """
     inserted = 0
+    new_events: list[NormalizedGameEvent] = []
     for event in events:
         if event.event_id in existing_ids:
             continue
@@ -121,7 +131,45 @@ def _insert_events(
             continue
         existing_ids.add(event.event_id)
         inserted += 1
-    return inserted
+        new_events.append(event)
+    return inserted, new_events
+
+
+def _previous_live_state(game: Game) -> GameLiveState | None:
+    snapshot = game.live_state
+    if not isinstance(snapshot, dict):
+        return None
+    try:
+        return GameLiveState(
+            home_score=int(snapshot.get("home_score") or 0),
+            away_score=int(snapshot.get("away_score") or 0),
+            status=str(snapshot.get("status") or "Unknown"),
+            detailed_state=str(snapshot.get("detailed_state") or "Unknown"),
+            current_inning=snapshot.get("current_inning"),
+            inning_state=snapshot.get("inning_state"),
+            is_top_inning=snapshot.get("is_top_inning"),
+            outs=snapshot.get("outs"),
+            balls=snapshot.get("balls"),
+            strikes=snapshot.get("strikes"),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _wp_fields_from_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    if not snapshot:
+        return {}
+    fields: dict[str, Any] = {}
+    for key in (
+        "home_win_proba",
+        "away_win_proba",
+        "model_version_id",
+        "model_run_id",
+        "pitcher_id",
+    ):
+        if key in snapshot and snapshot[key] is not None:
+            fields[key] = snapshot[key]
+    return fields
 
 
 def sync_live_game(
@@ -135,9 +183,13 @@ def sync_live_game(
     """
     Fetch live feed for ``game_pk``, update ``Game`` state, append new events.
 
+    On meaningful events (run, out, pitching change, end of inning), runs the
+    active in-game model, upserts a live ``Prediction``, and includes WP in the
+    Redis / WebSocket snapshot.
+
     Returns a summary dict with keys ``game_pk``, ``events_inserted``,
-    ``status``, and ``detailed_state``. Raises ``MLBAPIError`` on fetch failure
-    after retries.
+    ``status``, ``detailed_state``, and optionally ``live_wp_updated``.
+    Raises ``MLBAPIError`` on fetch failure after retries.
     """
     settings = get_settings()
     max_retries = settings.live_sync_retries if retries is None else retries
@@ -147,9 +199,22 @@ def sync_live_game(
         else backoff_seconds
     )
 
-    game = db.scalar(select(Game).where(Game.game_pk == game_pk))
+    game = db.scalar(
+        select(Game)
+        .options(joinedload(Game.home_team), joinedload(Game.away_team))
+        .where(Game.game_pk == game_pk)
+    )
     if game is None:
         raise ValueError(f"Game {game_pk} not found in database")
+
+    previous_state = _previous_live_state(game)
+    previous_snapshot = dict(game.live_state) if isinstance(game.live_state, dict) else {}
+    previous_pitcher_id = previous_snapshot.get("pitcher_id")
+    if previous_pitcher_id is not None:
+        try:
+            previous_pitcher_id = int(previous_pitcher_id)
+        except (TypeError, ValueError):
+            previous_pitcher_id = None
 
     last_exc: Exception | None = None
     live_feed: dict[str, Any] | None = None
@@ -186,19 +251,62 @@ def sync_live_game(
 
     existing_ids = _existing_event_ids(db, game_pk)
     events = normalize_play_events(live_feed)
-    inserted = _insert_events(db, game_pk, events, existing_ids)
+    inserted, new_events = _insert_events(db, game_pk, events, existing_ids)
 
-    snapshot = serialize_live_state(game_pk, state, events_inserted=inserted)
+    current_pitcher_id = extract_pitcher_id(live_feed)
+    existing_live = get_live_prediction_for_game_pk(db, game_pk)
+    live_wp_updated = False
+    live_prediction = existing_live
+
+    if should_run_live_inference(
+        previous_state=previous_state,
+        new_state=state,
+        new_events=new_events,
+        previous_pitcher_id=previous_pitcher_id,
+        current_pitcher_id=current_pitcher_id,
+        has_existing_prediction=existing_live is not None,
+    ):
+        try:
+            inferred = generate_live_prediction_for_game(db, game, live_feed)
+        except Exception:
+            logger.exception("Live WP inference failed for game_pk=%s", game_pk)
+            inferred = None
+        if inferred is not None:
+            live_prediction = inferred
+            live_wp_updated = True
+
+    wp = win_probability_payload(live_prediction)
+    # Keep prior WP on the snapshot when this tick did not re-infer.
+    carry = _wp_fields_from_snapshot(previous_snapshot)
+    snapshot_kwargs: dict[str, Any] = {
+        "events_inserted": inserted,
+        "pitcher_id": current_pitcher_id
+        if current_pitcher_id is not None
+        else carry.get("pitcher_id"),
+    }
+    if wp is not None:
+        snapshot_kwargs.update(wp)
+    else:
+        for key in ("home_win_proba", "away_win_proba", "model_version_id", "model_run_id"):
+            if key in carry:
+                snapshot_kwargs[key] = carry[key]
+
+    snapshot = serialize_live_state(game_pk, state, **snapshot_kwargs)
     game.live_state = snapshot
 
     db.commit()
-    cache_live_state(game_pk, state, events_inserted=inserted)
-    return {
+    cache_live_state(game_pk, state, **snapshot_kwargs)
+    summary: dict[str, Any] = {
         "game_pk": game_pk,
         "events_inserted": inserted,
         "status": state.status,
         "detailed_state": state.detailed_state,
+        "live_wp_updated": live_wp_updated,
     }
+    if wp is not None:
+        summary["home_win_proba"] = wp["home_win_proba"]
+        summary["away_win_proba"] = wp["away_win_proba"]
+    return summary
 
 
 def _is_live_candidate(game: Game | ScheduledGame) -> bool:

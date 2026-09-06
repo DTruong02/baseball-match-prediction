@@ -103,6 +103,14 @@ class PredictionRead(BaseModel):
         )
 
 
+class GameDetailRead(GameRead):
+    """Game detail including pregame line and current live win probability."""
+
+    pregame_prediction: Optional[PredictionRead] = None
+    live_prediction: Optional[PredictionRead] = None
+
+
+
 class ScheduleSyncResponse(BaseModel):
     date: date
     games_synced: int
@@ -125,6 +133,11 @@ class LiveStateRead(BaseModel):
     strikes: Optional[int] = None
     events_inserted: int = 0
     updated_at: Optional[str] = None
+    pitcher_id: Optional[int] = None
+    home_win_proba: Optional[float] = None
+    away_win_proba: Optional[float] = None
+    model_version_id: Optional[int] = None
+    model_run_id: Optional[str] = None
 
 
 class LiveSnapshotRead(BaseModel):

@@ -6,7 +6,11 @@ from baseball_analyze.models.artifacts import (
     optional_git_hash,
     save_versioned_run,
 )
-from baseball_analyze.models.inference import predict_game, resolve_model_version
+from baseball_analyze.models.inference import (
+    predict_game,
+    predict_in_game,
+    resolve_model_version,
+)
 from baseball_analyze.models.model import (
     evaluate,
     load_artifact,
@@ -31,6 +35,7 @@ __all__ = [
     "optional_git_hash",
     "predict_game",
     "predict_home_win_proba",
+    "predict_in_game",
     "resolve_model_version",
     "save_artifact",
     "save_versioned_run",

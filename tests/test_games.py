@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from baseball_backend.db.base import Base
-from baseball_backend.db.models import Game, ModelVersion, Player, Team, User
+from baseball_backend.db.models import Game, ModelVersion, Player, Prediction, Team, User
 from baseball_backend.db.session import get_db
 from baseball_backend.main import app
 
@@ -49,7 +49,7 @@ def db_session() -> Generator[Session, None, None]:
         poolclass=StaticPool,
     )
     jsonb_columns: list = []
-    for table in (ModelVersion.__table__,):
+    for table in (ModelVersion.__table__, Prediction.__table__):
         for column in table.columns:
             if isinstance(column.type, JSONB):
                 jsonb_columns.append(column)
@@ -60,6 +60,7 @@ def db_session() -> Generator[Session, None, None]:
         Player.__table__,
         Game.__table__,
         ModelVersion.__table__,
+        Prediction.__table__,
     ]
     Base.metadata.create_all(bind=engine, tables=tables)
     session = sessionmaker(bind=engine, autocommit=False, autoflush=False)()
@@ -124,7 +125,10 @@ def test_list_games_returns_schedule(client: TestClient, auth_headers: dict[str,
 def test_get_game_by_pk(client: TestClient, auth_headers: dict[str, str]) -> None:
     response = client.get("/games/778001", headers=auth_headers)
     assert response.status_code == 200
-    assert response.json()["venue_name"] == "Yankee Stadium"
+    body = response.json()
+    assert body["venue_name"] == "Yankee Stadium"
+    assert body["pregame_prediction"] is None
+    assert body["live_prediction"] is None
 
 
 def test_get_game_returns_404_for_missing_game(

@@ -51,7 +51,9 @@ export default function GameDetailPage() {
         ]);
         if (!cancelled) {
           setGame(gameData);
-          setPrediction(predictionData);
+          setPrediction(
+            predictionData ?? gameData.pregame_prediction ?? null,
+          );
         }
       } catch (err) {
         if (!cancelled) {
@@ -167,6 +169,28 @@ export default function GameDetailPage() {
                   </p>
                 )}
               </section>
+
+              {game.live_prediction ||
+              (live?.home_win_proba != null && live?.away_win_proba != null) ? (
+                <section className="rounded-xl border border-border bg-surface p-6">
+                  <h2 className="text-sm font-medium text-muted">
+                    Live win probability
+                  </h2>
+                  <p className="mt-3 text-sm text-muted">
+                    Updates on runs, outs, pitching changes, and end of inning.
+                    Current line also appears on the live scoreboard.
+                  </p>
+                  {game.live_prediction ? (
+                    <div className="mt-4">
+                      <PredictionDisplay
+                        game={game}
+                        prediction={game.live_prediction}
+                        variant="detail"
+                      />
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
             </>
           ) : null}
         </div>

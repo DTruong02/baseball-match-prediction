@@ -46,8 +46,13 @@ def serialize_live_state(
     state: GameLiveState,
     *,
     events_inserted: int = 0,
+    pitcher_id: int | None = None,
+    home_win_proba: float | None = None,
+    away_win_proba: float | None = None,
+    model_version_id: int | None = None,
+    model_run_id: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "game_pk": game_pk,
         "home_score": state.home_score,
         "away_score": state.away_score,
@@ -62,6 +67,17 @@ def serialize_live_state(
         "events_inserted": events_inserted,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if pitcher_id is not None:
+        payload["pitcher_id"] = pitcher_id
+    if home_win_proba is not None:
+        payload["home_win_proba"] = home_win_proba
+    if away_win_proba is not None:
+        payload["away_win_proba"] = away_win_proba
+    if model_version_id is not None:
+        payload["model_version_id"] = model_version_id
+    if model_run_id is not None:
+        payload["model_run_id"] = model_run_id
+    return payload
 
 
 class LiveStateCache:
@@ -84,11 +100,21 @@ class LiveStateCache:
         state: GameLiveState,
         *,
         events_inserted: int = 0,
+        pitcher_id: int | None = None,
+        home_win_proba: float | None = None,
+        away_win_proba: float | None = None,
+        model_version_id: int | None = None,
+        model_run_id: str | None = None,
     ) -> dict[str, Any]:
         payload = serialize_live_state(
             game_pk,
             state,
             events_inserted=events_inserted,
+            pitcher_id=pitcher_id,
+            home_win_proba=home_win_proba,
+            away_win_proba=away_win_proba,
+            model_version_id=model_version_id,
+            model_run_id=model_run_id,
         )
         encoded = json.dumps(payload)
         key = live_state_key(game_pk)
@@ -142,6 +168,11 @@ def cache_live_state(
     state: GameLiveState,
     *,
     events_inserted: int = 0,
+    pitcher_id: int | None = None,
+    home_win_proba: float | None = None,
+    away_win_proba: float | None = None,
+    model_version_id: int | None = None,
+    model_run_id: str | None = None,
 ) -> dict[str, Any] | None:
     """
     Persist live state to Redis and optionally publish an update.
@@ -152,7 +183,16 @@ def cache_live_state(
     if cache is None:
         return None
     try:
-        return cache.store(game_pk, state, events_inserted=events_inserted)
+        return cache.store(
+            game_pk,
+            state,
+            events_inserted=events_inserted,
+            pitcher_id=pitcher_id,
+            home_win_proba=home_win_proba,
+            away_win_proba=away_win_proba,
+            model_version_id=model_version_id,
+            model_run_id=model_run_id,
+        )
     except Exception:
         logger.exception("Failed to cache live state for game_pk=%s", game_pk)
         return None

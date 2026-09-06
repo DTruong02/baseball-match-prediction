@@ -1,4 +1,4 @@
-"""Clean inference API for pregame home-win predictions."""
+"""Clean inference API for pregame and in-game home-win predictions."""
 
 from __future__ import annotations
 
@@ -10,6 +10,11 @@ import numpy as np
 
 from baseball_analyze.data.mlb_client import fetch_schedule_by_game_pk
 from baseball_analyze.features import FEATURE_COLUMNS, build_features_for_game, feature_vector
+from baseball_analyze.features.in_game import (
+    IN_GAME_FEATURE_COLUMNS,
+    build_in_game_features_from_feed,
+    in_game_feature_vector,
+)
 from baseball_analyze.models.artifacts import MANIFEST_FILENAME, METRICS_FILENAME
 from baseball_analyze.models.model import load_artifact, predict_home_win_proba
 
@@ -80,6 +85,59 @@ def predict_game(
         "home_win_proba": p_home,
         "away_win_proba": 1.0 - p_home,
         "features": {c: float(fr.features[c]) for c in FEATURE_COLUMNS},
+        "model_version": resolve_model_version(path),
+        "notes": list(fr.notes),
+    }
+
+
+def predict_in_game(
+    live_feed: dict[str, Any],
+    model_path: str | Path,
+    *,
+    game_pk: int,
+    season: int,
+    home_abbrev: str,
+    away_abbrev: str,
+    cache_dir: Path | str | None = None,
+) -> dict[str, Any]:
+    """
+    Predict live home/away win probabilities from a current MLB live feed.
+
+    Uses in-game features from the linescore snapshot (score, inning, outs,
+    bases, pitcher/batter context). Returns a dict with ``home_win_proba``,
+    ``away_win_proba``, ``features``, ``model_version``, ``notes``, plus
+    identity fields (``game_pk``, ``season``, ``at_bat_index``).
+
+    Raises ``ValueError`` when the feed lacks resolvable in-game state.
+    """
+    path = Path(model_path)
+    cache = Path(cache_dir) if cache_dir is not None else None
+
+    fr = build_in_game_features_from_feed(
+        live_feed,
+        game_pk=int(game_pk),
+        season=int(season),
+        home_abbrev=home_abbrev,
+        away_abbrev=away_abbrev,
+        cache_dir=cache,
+    )
+    if fr is None:
+        raise ValueError(
+            f"Could not build in-game features for gamePk={game_pk} "
+            "(missing linescore inning/half)"
+        )
+
+    model, _cols = load_artifact(path, expected_columns=IN_GAME_FEATURE_COLUMNS)
+    X = np.vstack([in_game_feature_vector(fr)])
+    p_home = float(predict_home_win_proba(model, X)[0])
+
+    return {
+        "game_pk": fr.game_pk,
+        "season": fr.season,
+        "at_bat_index": fr.at_bat_index,
+        "home_win_proba": p_home,
+        "away_win_proba": 1.0 - p_home,
+        "features": {c: float(fr.features[c]) for c in IN_GAME_FEATURE_COLUMNS},
         "model_version": resolve_model_version(path),
         "notes": list(fr.notes),
     }

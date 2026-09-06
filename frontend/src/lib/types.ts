@@ -21,6 +21,22 @@ export interface Player {
   full_name: string;
 }
 
+export interface ModelVersionSummary {
+  id: number;
+  run_id: string;
+}
+
+export interface Prediction {
+  id: number;
+  game_pk: number;
+  home_win_proba: number;
+  away_win_proba: number;
+  features?: Record<string, number> | null;
+  notes?: string | null;
+  model_version: ModelVersionSummary;
+  created_at: string;
+}
+
 export interface Game {
   id: number;
   game_pk: number;
@@ -37,26 +53,12 @@ export interface Game {
   home_score: number | null;
   away_score: number | null;
   winner: string | null;
+  pregame_prediction?: Prediction | null;
+  live_prediction?: Prediction | null;
 }
 
 export interface ApiErrorBody {
   detail?: string | { msg: string }[];
-}
-
-export interface ModelVersionSummary {
-  id: number;
-  run_id: string;
-}
-
-export interface Prediction {
-  id: number;
-  game_pk: number;
-  home_win_proba: number;
-  away_win_proba: number;
-  features?: Record<string, number> | null;
-  notes?: string | null;
-  model_version: ModelVersionSummary;
-  created_at: string;
 }
 
 export interface CalibrationBucket {
@@ -101,6 +103,11 @@ export interface LiveState {
   strikes: number | null;
   events_inserted: number;
   updated_at: string | null;
+  pitcher_id?: number | null;
+  home_win_proba?: number | null;
+  away_win_proba?: number | null;
+  model_version_id?: number | null;
+  model_run_id?: string | null;
 }
 
 export interface LiveSnapshot {
