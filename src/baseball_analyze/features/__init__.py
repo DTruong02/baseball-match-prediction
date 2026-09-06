@@ -1,4 +1,8 @@
-"""Build numeric feature rows for pregame home-win modeling."""
+"""Build numeric feature rows for pregame home-win modeling.
+
+In-game (live WP) features live in ``baseball_analyze.features.in_game`` and are
+intentionally separate from the pregame columns below.
+"""
 
 from __future__ import annotations
 

@@ -16,7 +16,7 @@ ML code lives under `src/baseball_analyze/`:
 | Path | Role |
 |------|------|
 | `data/` | MLB client, FanGraphs loaders, cache, park factors, team mapping |
-| `features/` | Pregame feature engineering (`FEATURE_COLUMNS`, `build_features_for_game`) |
+| `features/` | Pregame feature engineering (`FEATURE_COLUMNS`, `build_features_for_game`); in-game WP features in `features/in_game.py` |
 | `models/` | Training, sklearn artifact I/O, `predict_core`, **`inference.predict_game`** |
 | `configs/` (repo root) | YAML training configs |
 | `cli.py`, `chat_tools.py`, `chat_repl.py` | CLI and grounded chat REPL |
@@ -132,6 +132,14 @@ Order is fixed in `baseball_analyze.features.FEATURE_COLUMNS`:
 **Starter FIP / K-BB** come from MLB Stats API `sabermetrics` pitching (no Chadwick / FanGraphs player id map). Team offense/defense and bullpen aggregates use FanGraphs via `pybaseball` (cached under `./cache/`).
 
 Park factors are static defaults in `data/park_data.py`; refresh from FanGraphs if you need current-year precision.
+
+### In-game features (Stage 5)
+
+Live win-probability features are **not** the pregame set. Use `baseball_analyze.features.in_game`:
+
+- Columns (`IN_GAME_FEATURE_COLUMNS`): score differential, inning, half-inning, outs, base occupancy, count, current pitcher FIP / K-BB/9, same-hand matchup, defending bullpen FIP, reliever flag
+- `iter_pre_play_states` / `build_in_game_training_rows_from_feed` — historical play-by-play → training rows (label = final home win)
+- `state_from_linescore` / `build_in_game_features_from_feed` — current linescore snapshot for live inference
 
 ## Backend API (Stage 2)
 
