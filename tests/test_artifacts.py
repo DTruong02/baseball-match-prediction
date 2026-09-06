@@ -131,3 +131,41 @@ def test_save_versioned_run_writes_files_and_convenience_copy(tmp_path: Path):
     loaded_model, cols = load_artifact(convenience)
     assert cols == FEATURE_COLUMNS
     assert loaded_model is not None
+
+
+def test_save_versioned_run_in_game_feature_columns(tmp_path: Path):
+    from baseball_analyze.features.in_game import IN_GAME_FEATURE_COLUMNS
+
+    model = _tiny_fitted_pipeline()
+    run_id = "20260906T120000Z_ingame1"
+    manifest = build_manifest(
+        run_id=run_id,
+        seasons=[2023],
+        val_seasons=[],
+        split_type="random_by_game",
+        train_rows=10,
+        val_rows=4,
+        max_games=5,
+        test_size=0.25,
+        hyperparameters={"calibrate": False, "class_weight": "balanced", "c_grid": [1.0], "best_C": 1.0},
+        feature_columns=IN_GAME_FEATURE_COLUMNS,
+        kind="in_game",
+    )
+    artifacts_root = tmp_path / "artifacts"
+    convenience = artifacts_root / "in_game_model.joblib"
+    run_dir = save_versioned_run(
+        model=model,
+        metrics={"accuracy": 0.6, "roc_auc": 0.7, "log_loss": 0.5, "brier": 0.2},
+        manifest=manifest,
+        artifacts_root=artifacts_root,
+        convenience_out=convenience,
+        run_id=run_id,
+    )
+
+    manifest_payload = json.loads((run_dir / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+    assert manifest_payload["kind"] == "in_game"
+    assert manifest_payload["feature_columns"] == IN_GAME_FEATURE_COLUMNS
+
+    loaded_model, cols = load_artifact(convenience, expected_columns=IN_GAME_FEATURE_COLUMNS)
+    assert cols == IN_GAME_FEATURE_COLUMNS
+    assert loaded_model is not None

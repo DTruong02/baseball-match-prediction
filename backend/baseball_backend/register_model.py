@@ -14,7 +14,7 @@ from baseball_backend.settings import get_settings
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Register a Stage 1 training run artifact directory as a ModelVersion.",
+        description="Register a training run artifact directory as a ModelVersion.",
     )
     parser.add_argument("run_id", help="Run id directory name under artifacts/")
     parser.add_argument(
@@ -31,8 +31,8 @@ def main() -> None:
     parser.add_argument(
         "--kind",
         choices=[kind.value for kind in ModelVersionKind],
-        default=ModelVersionKind.PREGAME.value,
-        help="Model kind (default: pregame)",
+        default=None,
+        help="Model kind (default: manifest kind, else pregame)",
     )
     args = parser.parse_args()
 

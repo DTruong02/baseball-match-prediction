@@ -44,6 +44,7 @@ pythonpath = ["backend"]
 [project.scripts]
 baseball-analyze = "baseball_analyze.cli:main"
 baseball-analyze-train = "baseball_analyze.train:main_train"
+baseball-analyze-train-in-game = "baseball_analyze.models.train_in_game:main_train_in_game"
 baseball-api = "baseball_backend.main:main"
 baseball-sync-schedule = "baseball_backend.sync_schedule:main"
 baseball-register-model = "baseball_backend.register_model:main"

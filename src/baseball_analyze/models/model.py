@@ -75,15 +75,29 @@ def predict_home_win_proba(model: Pipeline, X: np.ndarray) -> np.ndarray:
     return proba[:, 1]
 
 
-def save_artifact(model: Pipeline, path: Path) -> None:
+def save_artifact(
+    model: Pipeline,
+    path: Path,
+    feature_columns: list[str] | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload: Artifact = (model, FEATURE_COLUMNS)
+    cols = list(feature_columns) if feature_columns is not None else list(FEATURE_COLUMNS)
+    payload: Artifact = (model, cols)
     joblib.dump(payload, path)
 
 
-def load_artifact(path: Path) -> Artifact:
+def load_artifact(
+    path: Path,
+    *,
+    expected_columns: list[str] | None = None,
+) -> Artifact:
     payload = joblib.load(path)
     model, cols = payload
-    if cols != FEATURE_COLUMNS:
-        raise ValueError(f"Feature mismatch: artifact {cols} vs code {FEATURE_COLUMNS}")
+    expected = (
+        list(expected_columns)
+        if expected_columns is not None
+        else list(FEATURE_COLUMNS)
+    )
+    if cols != expected:
+        raise ValueError(f"Feature mismatch: artifact {cols} vs expected {expected}")
     return model, cols

@@ -59,6 +59,7 @@ def build_manifest(
     feature_columns: Optional[list[str]] = None,
     created_at: Optional[datetime] = None,
     git_hash: Optional[str] = None,
+    kind: Optional[str] = None,
 ) -> dict[str, Any]:
     """Build the JSON-serializable manifest for a training run."""
     created = created_at or datetime.now(timezone.utc)
@@ -75,6 +76,8 @@ def build_manifest(
         "test_size": float(test_size),
         "hyperparameters": hyperparameters,
     }
+    if kind is not None:
+        manifest["kind"] = kind
     if git_hash is not None:
         manifest["git_hash"] = git_hash
     return manifest
@@ -117,7 +120,9 @@ def save_versioned_run(
     run_dir.mkdir(parents=True, exist_ok=False)
 
     model_path = run_dir / MODEL_FILENAME
-    save_artifact(model, model_path)
+    feature_columns = manifest.get("feature_columns")
+    cols = list(feature_columns) if isinstance(feature_columns, list) else None
+    save_artifact(model, model_path, feature_columns=cols)
     _write_json(run_dir / METRICS_FILENAME, {k: float(v) for k, v in metrics.items()})
     _write_json(run_dir / MANIFEST_FILENAME, manifest)
 

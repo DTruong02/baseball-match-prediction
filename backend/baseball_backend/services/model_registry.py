@@ -74,12 +74,13 @@ def register_model_from_run(
     run_id: str,
     *,
     artifacts_root: Path,
-    kind: str = ModelVersionKind.PREGAME.value,
+    kind: str | None = None,
     activate: bool = False,
 ) -> ModelVersion:
     """
     Insert or update a ``ModelVersion`` row from ``artifacts_root/<run_id>/``.
 
+    ``kind`` defaults to ``manifest["kind"]`` when present, otherwise ``pregame``.
     When ``activate`` is True, archives other active rows of the same ``kind``.
     """
     run_dir = artifacts_root / run_id
@@ -91,9 +92,16 @@ def register_model_from_run(
             f"manifest run_id {manifest_run_id!r} does not match requested {run_id!r}"
         )
 
+    resolved_kind = kind or manifest.get("kind") or ModelVersionKind.PREGAME.value
+    valid_kinds = {k.value for k in ModelVersionKind}
+    if resolved_kind not in valid_kinds:
+        raise ArtifactError(
+            f"Invalid model kind {resolved_kind!r}; expected one of {sorted(valid_kinds)}"
+        )
+
     fields = {
         "artifact_path": str(model_path),
-        "kind": kind,
+        "kind": resolved_kind,
         "metrics": metrics,
         "feature_columns": manifest.get("feature_columns"),
         "hyperparameters": manifest.get("hyperparameters"),
@@ -116,7 +124,7 @@ def register_model_from_run(
         model_version = existing
 
     if activate:
-        _archive_active_for_kind(db, kind, exclude_id=model_version.id)
+        _archive_active_for_kind(db, resolved_kind, exclude_id=model_version.id)
         model_version.status = ModelVersionStatus.ACTIVE.value
 
     db.commit()
@@ -158,3 +166,8 @@ def get_active_model_version(
 def get_active_pregame_model(db: Session) -> ModelVersion:
     """Return the active pregame model version for inference."""
     return get_active_model_version(db, kind=ModelVersionKind.PREGAME.value)
+
+
+def get_active_in_game_model(db: Session) -> ModelVersion:
+    """Return the active in-game (live WP) model version for inference."""
+    return get_active_model_version(db, kind=ModelVersionKind.IN_GAME.value)

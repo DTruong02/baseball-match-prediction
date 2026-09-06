@@ -17,7 +17,7 @@ ML code lives under `src/baseball_analyze/`:
 |------|------|
 | `data/` | MLB client, FanGraphs loaders, cache, park factors, team mapping |
 | `features/` | Pregame feature engineering (`FEATURE_COLUMNS`, `build_features_for_game`); in-game WP features in `features/in_game.py` |
-| `models/` | Training, sklearn artifact I/O, `predict_core`, **`inference.predict_game`** |
+| `models/` | Training (pregame + in-game), sklearn artifact I/O, `predict_core`, **`inference.predict_game`** |
 | `configs/` (repo root) | YAML training configs |
 | `cli.py`, `chat_tools.py`, `chat_repl.py` | CLI and grounded chat REPL |
 
@@ -59,6 +59,25 @@ These limits are intentional for v1 pipeline sanity checks; tighter backtests ne
 3. **Park factors** — Static defaults in `data/park_data.py`; refresh from FanGraphs if you need current-year park precision.
 
 Do not treat holdout metrics from this trainer as unbiased pregame forecasting benchmarks without addressing the above.
+
+## Train an in-game (live WP) model
+
+Stage 5 uses a **separate** feature set and artifact from pregame. Training walks completed games, rebuilds pre-PA game state from play-by-play, and labels every row with the game's final home-win outcome.
+
+```bash
+baseball-analyze-train-in-game --config configs/in_game_logistic_regression.yaml
+baseball-analyze-train-in-game --config configs/in_game_logistic_regression.yaml --max-games 50 --seasons 2023
+```
+
+Artifacts use the same layout (`artifacts/<run_id>/{model.joblib,metrics.json,manifest.json}`). The convenience copy defaults to `artifacts/in_game_model.joblib`. Manifests include `"kind": "in_game"` and `IN_GAME_FEATURE_COLUMNS`.
+
+Register and activate **independently** of the pregame model (activating in-game does not archive pregame):
+
+```bash
+baseball-register-model <run_id> --activate
+# or explicitly:
+baseball-register-model <run_id> --kind in_game --activate
+```
 
 ## Predict (pregame)
 
@@ -140,6 +159,7 @@ Live win-probability features are **not** the pregame set. Use `baseball_analyze
 - Columns (`IN_GAME_FEATURE_COLUMNS`): score differential, inning, half-inning, outs, base occupancy, count, current pitcher FIP / K-BB/9, same-hand matchup, defending bullpen FIP, reliever flag
 - `iter_pre_play_states` / `build_in_game_training_rows_from_feed` — historical play-by-play → training rows (label = final home win)
 - `state_from_linescore` / `build_in_game_features_from_feed` — current linescore snapshot for live inference
+- Train/eval: `baseball-analyze-train-in-game` (see above); register with `kind=in_game`
 
 ## Backend API (Stage 2)
 
@@ -192,15 +212,20 @@ When Redis pub/sub is disabled but Redis caching is on, the API polls the cache 
 - `GET /games/{game_pk}/live` — same scoreboard snapshot as the WS handshake (`data`, `source`, `degraded`)
 - `GET /games/{game_pk}/events` — play-by-play rows for the timeline
 
-### Model registry (Stage 3)
+### Model registry (Stage 3 / Stage 5)
 
-After training, register a versioned run in Postgres so the API can load the active pregame model for inference:
+After training, register a versioned run in Postgres so the API can load the active model for inference:
 
 ```bash
+# Pregame (default when manifest has no kind)
 baseball-register-model 20260824T200812Z_deadbeef --activate
+
+# In-game live WP (manifest from baseball-analyze-train-in-game already sets kind=in_game)
+baseball-register-model 20260906T120000Z_ingame01 --activate
+baseball-register-model 20260906T120000Z_ingame01 --kind in_game --activate
 ```
 
-This reads `artifacts/<run_id>/{model.joblib,metrics.json,manifest.json}`, upserts a `model_versions` row (metrics, feature columns, hyperparameters, train seasons), and optionally sets `status=active` while archiving other active models of the same kind.
+This reads `artifacts/<run_id>/{model.joblib,metrics.json,manifest.json}`, upserts a `model_versions` row (metrics, feature columns, hyperparameters, train seasons), and optionally sets `status=active` while archiving other active models of the **same kind** only. Pregame and in-game each keep their own active version.
 
 ## Frontend (Stage 2)
 

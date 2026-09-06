@@ -1,0 +1,20 @@
+# Default logistic regression config for in-game (live WP) training.
+# CLI flags override any value here, e.g.:
+#   baseball-analyze-train-in-game --config configs/in_game_logistic_regression.yaml --max-games 50
+#
+# After training, register with kind=in_game (manifest includes kind; CLI can omit --kind):
+#   baseball-register-model <run_id> --activate
+
+seasons: [2023]
+val_seasons: []
+max_games: null
+test_size: 0.25
+out: artifacts/in_game_model.joblib
+log_csv: artifacts/in_game_training_log.csv
+random_state: 42
+cache_dir: null
+
+hyperparameters:
+  calibrate: false
+  class_weight: balanced
+  c_grid: [0.05, 0.1, 0.5, 1.0, 5.0, 10.0]

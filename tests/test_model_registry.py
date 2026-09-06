@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from baseball_analyze.features import FEATURE_COLUMNS
+from baseball_analyze.features.in_game import IN_GAME_FEATURE_COLUMNS
 from baseball_analyze.models.artifacts import build_manifest, save_versioned_run
 from baseball_backend.db.base import Base
 from baseball_backend.db.models import ModelVersion, ModelVersionKind, ModelVersionStatus
@@ -24,6 +25,7 @@ from baseball_backend.services.model_registry import (
     ArtifactError,
     ModelVersionNotFoundError,
     activate_model_version,
+    get_active_in_game_model,
     get_active_pregame_model,
     register_model_from_run,
 )
@@ -46,6 +48,8 @@ def _write_run(
     *,
     seasons: list[int] | None = None,
     git_hash: str | None = "abc123",
+    kind: str | None = None,
+    feature_columns: list[str] | None = None,
 ) -> Path:
     metrics = {"accuracy": 0.55, "roc_auc": 0.58, "log_loss": 0.68, "brier": 0.24}
     manifest = build_manifest(
@@ -63,7 +67,9 @@ def _write_run(
             "c_grid": [1.0],
             "best_C": 1.0,
         },
+        feature_columns=feature_columns,
         git_hash=git_hash,
+        kind=kind,
     )
     convenience = artifacts_root / "model.joblib"
     return save_versioned_run(
@@ -223,6 +229,49 @@ def test_register_model_missing_run_dir_raises(
             "missing-run-id",
             artifacts_root=artifacts_root,
         )
+
+
+def test_register_in_game_kind_from_manifest_and_independent_activation(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    artifacts_root = tmp_path / "artifacts"
+    pregame_id = "20260824T200812Z_pregameaa"
+    in_game_id = "20260824T200813Z_ingamebb"
+    _write_run(artifacts_root, pregame_id)
+    _write_run(
+        artifacts_root,
+        in_game_id,
+        kind=ModelVersionKind.IN_GAME.value,
+        feature_columns=IN_GAME_FEATURE_COLUMNS,
+    )
+
+    pregame = register_model_from_run(
+        db_session,
+        pregame_id,
+        artifacts_root=artifacts_root,
+        activate=True,
+    )
+    in_game = register_model_from_run(
+        db_session,
+        in_game_id,
+        artifacts_root=artifacts_root,
+        activate=True,
+    )
+
+    db_session.refresh(pregame)
+    assert pregame.kind == ModelVersionKind.PREGAME.value
+    assert pregame.status == ModelVersionStatus.ACTIVE.value
+    assert in_game.kind == ModelVersionKind.IN_GAME.value
+    assert in_game.status == ModelVersionStatus.ACTIVE.value
+    assert in_game.feature_columns == IN_GAME_FEATURE_COLUMNS
+    assert get_active_pregame_model(db_session).run_id == pregame_id
+    assert get_active_in_game_model(db_session).run_id == in_game_id
+
+
+def test_get_active_in_game_model_raises_when_none(db_session: Session) -> None:
+    with pytest.raises(ModelVersionNotFoundError, match="No active in_game"):
+        get_active_in_game_model(db_session)
 
 
 def test_register_model_manifest_run_id_mismatch_raises(
