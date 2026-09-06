@@ -178,8 +178,15 @@ export default function GameDetailPage() {
                   </h2>
                   <p className="mt-3 text-sm text-muted">
                     Updates on runs, outs, pitching changes, and end of inning.
-                    Current line also appears on the live scoreboard.
+                    Current line also appears on the live scoreboard. Major WP
+                    swings get a short rule-based note (for example, scoring
+                    plays).
                   </p>
+                  {live?.wp_explanation ? (
+                    <p className="mt-3 text-sm text-foreground">
+                      Latest swing: {live.wp_explanation}
+                    </p>
+                  ) : null}
                   {game.live_prediction ? (
                     <div className="mt-4">
                       <PredictionDisplay

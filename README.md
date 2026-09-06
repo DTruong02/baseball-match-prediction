@@ -142,7 +142,7 @@ result = predict_in_game(
 )
 ```
 
-The live worker re-runs this on meaningful events (runs, outs, pitching changes, end of inning), upserts a `Prediction` for the active `in_game` model, and pushes `home_win_proba` / `away_win_proba` on the Redis/WebSocket live snapshot. `GET /games/{game_pk}` returns both `pregame_prediction` and `live_prediction`.
+The live worker re-runs this on meaningful events (runs, outs, pitching changes, end of inning), upserts a `Prediction` for the active `in_game` model, and pushes `home_win_proba` / `away_win_proba` on the Redis/WebSocket live snapshot. When home WP moves by ≥5 percentage points, a rule-based `wp_explanation` is attached (e.g. `NYY scored 3 runs; WP +18%`). `GET /games/{game_pk}` returns both `pregame_prediction` and `live_prediction`.
 
 **Feature construction** (custom workflows):
 
@@ -263,7 +263,7 @@ Open `http://localhost:3000`. The dev server expects the API at `http://localhos
 
 - `/login`, `/register` — JWT auth (token stored in `localStorage`)
 - `/` — schedule dashboard with date picker
-- `/games/[gamePk]` — game detail with live scoreboard (including live WP when available), play-by-play timeline, WebSocket updates (falls back to HTTP polling), and pregame prediction
+- `/games/[gamePk]` — game detail with live scoreboard (live WP + rule-based swing notes when WP moves ≥5pp), play-by-play timeline, WebSocket updates (falls back to HTTP polling), and pregame prediction
 - `/model` — model performance
 - `/profile` — account shell
 

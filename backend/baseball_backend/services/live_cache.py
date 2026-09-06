@@ -51,6 +51,8 @@ def serialize_live_state(
     away_win_proba: float | None = None,
     model_version_id: int | None = None,
     model_run_id: str | None = None,
+    wp_explanation: str | None = None,
+    wp_delta_home: float | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "game_pk": game_pk,
@@ -77,6 +79,10 @@ def serialize_live_state(
         payload["model_version_id"] = model_version_id
     if model_run_id is not None:
         payload["model_run_id"] = model_run_id
+    if wp_explanation is not None:
+        payload["wp_explanation"] = wp_explanation
+    if wp_delta_home is not None:
+        payload["wp_delta_home"] = wp_delta_home
     return payload
 
 
@@ -105,6 +111,8 @@ class LiveStateCache:
         away_win_proba: float | None = None,
         model_version_id: int | None = None,
         model_run_id: str | None = None,
+        wp_explanation: str | None = None,
+        wp_delta_home: float | None = None,
     ) -> dict[str, Any]:
         payload = serialize_live_state(
             game_pk,
@@ -115,6 +123,8 @@ class LiveStateCache:
             away_win_proba=away_win_proba,
             model_version_id=model_version_id,
             model_run_id=model_run_id,
+            wp_explanation=wp_explanation,
+            wp_delta_home=wp_delta_home,
         )
         encoded = json.dumps(payload)
         key = live_state_key(game_pk)
@@ -173,6 +183,8 @@ def cache_live_state(
     away_win_proba: float | None = None,
     model_version_id: int | None = None,
     model_run_id: str | None = None,
+    wp_explanation: str | None = None,
+    wp_delta_home: float | None = None,
 ) -> dict[str, Any] | None:
     """
     Persist live state to Redis and optionally publish an update.
@@ -192,6 +204,8 @@ def cache_live_state(
             away_win_proba=away_win_proba,
             model_version_id=model_version_id,
             model_run_id=model_run_id,
+            wp_explanation=wp_explanation,
+            wp_delta_home=wp_delta_home,
         )
     except Exception:
         logger.exception("Failed to cache live state for game_pk=%s", game_pk)

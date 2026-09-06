@@ -122,6 +122,19 @@ export function LiveScoreboard({
               </p>
             </div>
           </div>
+          {live.wp_explanation ? (
+            <p
+              className={`mt-3 text-sm ${
+                live.wp_delta_home != null && live.wp_delta_home > 0
+                  ? "text-accent"
+                  : live.wp_delta_home != null && live.wp_delta_home < 0
+                    ? "text-danger"
+                    : "text-muted"
+              }`}
+            >
+              {live.wp_explanation}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </section>

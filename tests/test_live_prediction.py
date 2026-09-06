@@ -286,3 +286,80 @@ def test_sync_live_game_persists_and_pushes_live_wp(
     assert summary2["events_inserted"] == 0
     assert summary2["live_wp_updated"] is False
     assert summary2["home_win_proba"] == pytest.approx(summary["home_win_proba"])
+
+
+@patch("baseball_backend.services.live_ingestion.fetch_live_feed", return_value=LIVE_FEED)
+@patch("baseball_backend.services.live_ingestion.cache_live_state")
+@patch(
+    "baseball_analyze.features.in_game.fetch_pitcher_season_kbb9",
+    return_value=2.5,
+)
+@patch(
+    "baseball_analyze.features.in_game.fetch_pitcher_season_fip_xfip",
+    return_value=(3.8, 3.9),
+)
+@patch(
+    "baseball_analyze.features.in_game.bullpen_fip_by_team",
+    return_value={"NYY": 4.0, "BOS": 4.1},
+)
+@patch(
+    "baseball_analyze.features.in_game.mlb_abbrev_to_fangraphs",
+    side_effect=lambda abbrev, _season: abbrev,
+)
+@patch(
+    "baseball_backend.services.live_prediction_service.predict_in_game",
+)
+def test_sync_live_game_attaches_wp_swing_explanation(
+    mock_predict,
+    _map,
+    _bull,
+    _fip,
+    _kbb9,
+    mock_cache,
+    _feed,
+    db_session: Session,
+) -> None:
+    game = _seed_game(db_session)
+    # Prior live snapshot with WP so the next inference can compute a swing.
+    game.live_state = {
+        "game_pk": 824239,
+        "home_score": 0,
+        "away_score": 2,
+        "status": "Live",
+        "detailed_state": "In Progress",
+        "current_inning": 3,
+        "inning_state": "Top",
+        "is_top_inning": True,
+        "outs": 1,
+        "balls": 0,
+        "strikes": 0,
+        "events_inserted": 0,
+        "home_win_proba": 0.40,
+        "away_win_proba": 0.60,
+        "updated_at": "2026-08-15T18:00:00+00:00",
+    }
+    db_session.commit()
+
+    mock_predict.return_value = {
+        "home_win_proba": 0.58,
+        "away_win_proba": 0.42,
+        "features": {},
+        "model_version": RUN_ID,
+        "notes": [],
+    }
+
+    summary = sync_live_game(db_session, 824239, retries=0)
+
+    assert summary["live_wp_updated"] is True
+    assert "wp_explanation" in summary
+    assert "WP +" in summary["wp_explanation"]
+    assert summary["wp_delta_home"] == pytest.approx(0.18)
+
+    game = db_session.scalar(select(Game).where(Game.game_pk == 824239))
+    assert game is not None
+    assert game.live_state is not None
+    assert game.live_state["wp_explanation"] == summary["wp_explanation"]
+
+    _args, kwargs = mock_cache.call_args
+    assert kwargs["wp_explanation"] == summary["wp_explanation"]
+    assert kwargs["wp_delta_home"] == pytest.approx(0.18)

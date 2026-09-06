@@ -37,6 +37,7 @@ from baseball_backend.services.live_prediction_service import (
     win_probability_payload,
 )
 from baseball_backend.services.live_rate_limit import PollRateLimiter
+from baseball_backend.services.live_wp_explanations import build_wp_swing_explanation
 from baseball_backend.services.schedule_sync import _FINAL_STATES
 from baseball_backend.settings import get_settings
 
@@ -166,10 +167,67 @@ def _wp_fields_from_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
         "model_version_id",
         "model_run_id",
         "pitcher_id",
+        "wp_explanation",
+        "wp_delta_home",
     ):
         if key in snapshot and snapshot[key] is not None:
             fields[key] = snapshot[key]
     return fields
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _apply_wp_explanation(
+    snapshot_kwargs: dict[str, Any],
+    *,
+    live_wp_updated: bool,
+    previous_snapshot: dict[str, Any],
+    previous_state: GameLiveState | None,
+    new_state: GameLiveState,
+    new_events: list[NormalizedGameEvent],
+    home_label: str,
+    away_label: str,
+) -> None:
+    """Attach major-swing text when WP moved enough; otherwise carry prior text."""
+    carry = _wp_fields_from_snapshot(previous_snapshot)
+    if not live_wp_updated:
+        if "wp_explanation" in carry:
+            snapshot_kwargs["wp_explanation"] = carry["wp_explanation"]
+        if "wp_delta_home" in carry:
+            snapshot_kwargs["wp_delta_home"] = carry["wp_delta_home"]
+        return
+
+    new_home = _optional_float(snapshot_kwargs.get("home_win_proba"))
+    prev_home = _optional_float(previous_snapshot.get("home_win_proba"))
+    if new_home is None:
+        return
+
+    explanation = build_wp_swing_explanation(
+        previous_home_wp=prev_home,
+        new_home_wp=new_home,
+        previous_state=previous_state,
+        new_state=new_state,
+        new_events=new_events,
+        home_label=home_label,
+        away_label=away_label,
+    )
+    if explanation is not None:
+        snapshot_kwargs["wp_explanation"] = explanation["text"]
+        snapshot_kwargs["wp_delta_home"] = explanation["delta_home_wp"]
+    else:
+        # Keep the last major-swing note until another major swing replaces it.
+        if "wp_explanation" in carry:
+            snapshot_kwargs["wp_explanation"] = carry["wp_explanation"]
+        if "wp_delta_home" in carry:
+            snapshot_kwargs["wp_delta_home"] = carry["wp_delta_home"]
+
 
 
 def sync_live_game(
@@ -185,7 +243,8 @@ def sync_live_game(
 
     On meaningful events (run, out, pitching change, end of inning), runs the
     active in-game model, upserts a live ``Prediction``, and includes WP in the
-    Redis / WebSocket snapshot.
+    Redis / WebSocket snapshot. Major home-WP swings (≥5pp) also get a
+    rule-based ``wp_explanation`` string.
 
     Returns a summary dict with keys ``game_pk``, ``events_inserted``,
     ``status``, ``detailed_state``, and optionally ``live_wp_updated``.
@@ -291,6 +350,19 @@ def sync_live_game(
             if key in carry:
                 snapshot_kwargs[key] = carry[key]
 
+    home_label = game.home_team.abbreviation if game.home_team else "Home"
+    away_label = game.away_team.abbreviation if game.away_team else "Away"
+    _apply_wp_explanation(
+        snapshot_kwargs,
+        live_wp_updated=live_wp_updated,
+        previous_snapshot=previous_snapshot,
+        previous_state=previous_state,
+        new_state=state,
+        new_events=new_events,
+        home_label=home_label,
+        away_label=away_label,
+    )
+
     snapshot = serialize_live_state(game_pk, state, **snapshot_kwargs)
     game.live_state = snapshot
 
@@ -306,6 +378,9 @@ def sync_live_game(
     if wp is not None:
         summary["home_win_proba"] = wp["home_win_proba"]
         summary["away_win_proba"] = wp["away_win_proba"]
+    if snapshot_kwargs.get("wp_explanation"):
+        summary["wp_explanation"] = snapshot_kwargs["wp_explanation"]
+        summary["wp_delta_home"] = snapshot_kwargs.get("wp_delta_home")
     return summary
 
 

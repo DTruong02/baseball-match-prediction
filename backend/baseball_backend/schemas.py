@@ -138,6 +138,8 @@ class LiveStateRead(BaseModel):
     away_win_proba: Optional[float] = None
     model_version_id: Optional[int] = None
     model_run_id: Optional[str] = None
+    wp_explanation: Optional[str] = None
+    wp_delta_home: Optional[float] = None
 
 
 class LiveSnapshotRead(BaseModel):

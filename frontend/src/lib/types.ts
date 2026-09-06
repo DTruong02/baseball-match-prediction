@@ -108,6 +108,8 @@ export interface LiveState {
   away_win_proba?: number | null;
   model_version_id?: number | null;
   model_run_id?: string | null;
+  wp_explanation?: string | null;
+  wp_delta_home?: number | null;
 }
 
 export interface LiveSnapshot {

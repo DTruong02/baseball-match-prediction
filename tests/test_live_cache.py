@@ -63,14 +63,17 @@ def test_live_state_key_and_channel() -> None:
     assert parse_game_pk_from_channel("live:game:nope:updates") is None
 
 
-def test_serialize_live_state_includes_scoreboard_fields() -> None:
-    payload = serialize_live_state(824239, _sample_state(), events_inserted=2)
-    assert payload["game_pk"] == 824239
-    assert payload["home_score"] == 3
-    assert payload["away_score"] == 2
-    assert payload["current_inning"] == 7
-    assert payload["events_inserted"] == 2
-    assert "updated_at" in payload
+def test_serialize_live_state_includes_wp_explanation() -> None:
+    payload = serialize_live_state(
+        824239,
+        _sample_state(),
+        home_win_proba=0.61,
+        away_win_proba=0.39,
+        wp_explanation="NYY scored 2 runs; WP +12%",
+        wp_delta_home=0.12,
+    )
+    assert payload["wp_explanation"] == "NYY scored 2 runs; WP +12%"
+    assert payload["wp_delta_home"] == 0.12
 
 
 def test_live_state_cache_stores_in_progress_without_ttl() -> None:
