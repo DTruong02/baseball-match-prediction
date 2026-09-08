@@ -148,14 +148,15 @@ def list_game_events(
 def get_game(
     game_pk: int,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> GameDetailRead:
     """Game detail with pregame line and current live win probability."""
     game = _require_game(db, game_pk)
     get_prediction_for_game_pk(db, game_pk)
     pregame, live = get_game_win_probabilities(db, game_pk)
+    followed_ids = _followed_team_ids(db, current_user.id)
     return GameDetailRead(
-        **GameRead.model_validate(game).model_dump(),
+        **_game_to_read(game, followed_ids).model_dump(),
         pregame_prediction=PredictionRead.from_prediction(pregame) if pregame else None,
         live_prediction=PredictionRead.from_prediction(live) if live else None,
     )

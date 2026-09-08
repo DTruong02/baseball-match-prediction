@@ -37,6 +37,14 @@ export interface Prediction {
   created_at: string;
 }
 
+export interface Follow {
+  id: number;
+  entity_type: "team" | "player" | string;
+  team: Team | null;
+  player: Player | null;
+  created_at: string;
+}
+
 export interface Game {
   id: number;
   game_pk: number;
@@ -53,6 +61,7 @@ export interface Game {
   home_score: number | null;
   away_score: number | null;
   winner: string | null;
+  followed?: boolean;
   pregame_prediction?: Prediction | null;
   live_prediction?: Prediction | null;
 }

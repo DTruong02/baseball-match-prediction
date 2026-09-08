@@ -34,6 +34,7 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+select,
 input,
 button {
   font: inherit;

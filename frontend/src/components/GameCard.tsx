@@ -26,10 +26,21 @@ export function GameCard({
   return (
     <Link
       href={`/games/${game.game_pk}`}
-      className="group block rounded-xl border border-border bg-surface p-4 transition-colors hover:border-accent/40 hover:bg-surface-elevated"
+      className={`group block rounded-xl border bg-surface p-4 transition-colors hover:border-accent/40 hover:bg-surface-elevated ${
+        game.followed
+          ? "border-accent/35 ring-1 ring-accent/15"
+          : "border-border"
+      }`}
     >
       <div className="mb-3 flex items-center justify-between gap-3 text-xs text-muted">
-        <span>{game.detailed_state}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span>{game.detailed_state}</span>
+          {game.followed ? (
+            <span className="rounded border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent">
+              Following
+            </span>
+          ) : null}
+        </div>
         {game.venue_name ? <span className="truncate">{game.venue_name}</span> : null}
       </div>
       <div className="space-y-2">

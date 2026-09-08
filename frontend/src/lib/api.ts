@@ -5,12 +5,14 @@ import {
 } from "@/lib/auth-storage";
 import type {
   ApiErrorBody,
+  Follow,
   Game,
   GameEvent,
   LiveSnapshot,
   ModelPerformance,
   ModelPerformanceParams,
   Prediction,
+  Team,
   TokenResponse,
   User,
 } from "@/lib/types";
@@ -124,8 +126,51 @@ export async function fetchCurrentUser(): Promise<User> {
   return apiFetch<User>("/auth/me", {}, true);
 }
 
-export async function fetchGames(date: string): Promise<Game[]> {
-  return apiFetch<Game[]>(`/games?date=${encodeURIComponent(date)}`, {}, true);
+export async function fetchGames(
+  date: string,
+  options: { followingOnly?: boolean } = {},
+): Promise<Game[]> {
+  const search = new URLSearchParams({ date });
+  if (options.followingOnly) {
+    search.set("following_only", "true");
+  }
+  return apiFetch<Game[]>(`/games?${search.toString()}`, {}, true);
+}
+
+export async function fetchTeams(): Promise<Team[]> {
+  return apiFetch<Team[]>("/teams", {}, true);
+}
+
+export async function fetchFollows(): Promise<Follow[]> {
+  return apiFetch<Follow[]>("/follows", {}, true);
+}
+
+export async function followTeam(teamId: number): Promise<Follow> {
+  return apiFetch<Follow>(
+    "/follows",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entity_type: "team", team_id: teamId }),
+    },
+    true,
+  );
+}
+
+export async function followPlayer(playerId: number): Promise<Follow> {
+  return apiFetch<Follow>(
+    "/follows",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entity_type: "player", player_id: playerId }),
+    },
+    true,
+  );
+}
+
+export async function unfollow(followId: number): Promise<void> {
+  return apiFetch<void>(`/follows/${followId}`, { method: "DELETE" }, true);
 }
 
 export async function fetchGame(gamePk: number): Promise<Game> {

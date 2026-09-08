@@ -110,6 +110,9 @@ export default function GameDetailPage() {
                 <h1 className="text-2xl font-semibold tracking-tight">
                   {teamLabel(game.away_team)} at {teamLabel(game.home_team)}
                 </h1>
+                {game.followed ? (
+                  <p className="text-sm text-accent">On your watchlist</p>
+                ) : null}
                 {game.venue_name ? (
                   <p className="text-sm text-muted">{game.venue_name}</p>
                 ) : null}
