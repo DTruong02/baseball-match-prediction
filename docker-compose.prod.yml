@@ -1,0 +1,59 @@
+# Production overlay for Oracle Always Free (or any single-VM host).
+# Usage:
+#   export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+#   # or put COMPOSE_FILE=... in .env on the VM
+#   docker compose up -d --build
+#
+# Publishes only Caddy on 80/443. Postgres, Redis, API, and web stay on the internal network.
+
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+
+  api:
+    environment:
+      DATABASE_URL: postgresql://baseball:${POSTGRES_PASSWORD}@db:5432/baseball
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS in .env (e.g. https://baseball.example.com)}
+
+  worker:
+    environment:
+      DATABASE_URL: postgresql://baseball:${POSTGRES_PASSWORD}@db:5432/baseball
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+
+  notification-worker:
+    environment:
+      DATABASE_URL: postgresql://baseball:${POSTGRES_PASSWORD}@db:5432/baseball
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.web
+      args:
+        # Browser calls same-origin /api (Caddy strips the prefix → FastAPI).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL in .env (e.g. https://baseball.example.com/api)}
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env (e.g. baseball.example.com)}
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

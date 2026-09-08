@@ -3,10 +3,8 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: baseball
-      POSTGRES_PASSWORD: baseball
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-baseball}
       POSTGRES_DB: baseball
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -14,32 +12,31 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   api:
     build:
       context: .
       dockerfile: infra/Dockerfile.api
     image: baseball-api:local
-    ports:
-      - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://baseball:baseball@db:5432/baseball
+      DATABASE_URL: ${DATABASE_URL:-postgresql://baseball:baseball@db:5432/baseball}
       REDIS_URL: redis://redis:6379/0
       REDIS_ENABLED: "true"
       ARTIFACTS_ROOT: /app/artifacts
       API_HOST: 0.0.0.0
       API_PORT: "8000"
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
       LIVE_CACHE_TTL_COMPLETED_SECONDS: ${LIVE_CACHE_TTL_COMPLETED_SECONDS:-3600}
       LIVE_PUBSUB_ENABLED: ${LIVE_PUBSUB_ENABLED:-true}
@@ -75,6 +72,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    restart: unless-stopped
 
   worker:
     build:
@@ -82,7 +80,7 @@ services:
       dockerfile: infra/Dockerfile.worker
     image: baseball-worker:local
     environment:
-      DATABASE_URL: postgresql://baseball:baseball@db:5432/baseball
+      DATABASE_URL: ${DATABASE_URL:-postgresql://baseball:baseball@db:5432/baseball}
       REDIS_URL: redis://redis:6379/0
       REDIS_ENABLED: "true"
       ARTIFACTS_ROOT: /app/artifacts
@@ -104,6 +102,7 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
+    restart: unless-stopped
 
   notification-worker:
     image: baseball-worker:local
@@ -112,7 +111,7 @@ services:
       dockerfile: infra/Dockerfile.worker
     command: ["baseball-notification-worker"]
     environment:
-      DATABASE_URL: postgresql://baseball:baseball@db:5432/baseball
+      DATABASE_URL: ${DATABASE_URL:-postgresql://baseball:baseball@db:5432/baseball}
       REDIS_URL: redis://redis:6379/0
       REDIS_ENABLED: "true"
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
@@ -128,6 +127,7 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
+    restart: unless-stopped
 
   web:
     build:
@@ -136,11 +136,10 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     image: baseball-web:local
-    ports:
-      - "3000:3000"
     depends_on:
       api:
         condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:

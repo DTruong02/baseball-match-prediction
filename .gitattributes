@@ -1,3 +1,4 @@
 # Shell scripts must keep LF so Linux hosts / GitHub Actions can execute them.
 *.sh text eol=lf
 infra/deploy.sh text eol=lf
+infra/oracle-bootstrap.sh text eol=lf

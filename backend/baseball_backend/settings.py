@@ -16,7 +16,12 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    # Comma-separated browser origins allowed by CORS (production web origin, etc.).
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     artifacts_root: Path = Path("artifacts")
+
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
     live_poll_interval_seconds: float = 15.0
     live_poll_game_delay_seconds: float = 0.5
     live_poll_min_request_interval_seconds: float = 0.5

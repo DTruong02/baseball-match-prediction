@@ -5,7 +5,6 @@ set -euo pipefail
 
 DEPLOY_PATH="${DEPLOY_PATH:-$HOME/baseball-chatbot}"
 DEPLOY_REF="${DEPLOY_REF:-origin/main}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/health}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-5}"
 
@@ -25,6 +24,7 @@ git checkout --force "${DEPLOY_REF}"
 
 if [[ ! -f .env ]]; then
   echo "WARN: ${DEPLOY_PATH}/.env missing; Compose will use built-in defaults." >&2
+  echo "WARN: For Oracle production, copy .env.example and set COMPOSE_FILE + secrets (infra/HOSTING.md)." >&2
 fi
 
 echo "==> Building images"
@@ -37,10 +37,12 @@ docker compose run --rm --entrypoint sh api -c \
 echo "==> Starting Compose stack"
 docker compose up -d --remove-orphans
 
-echo "==> Waiting for API health at ${HEALTH_URL}"
+echo "==> Waiting for API health (in-container)"
 ok=0
 for i in $(seq 1 "${HEALTH_RETRIES}"); do
-  if curl -fsS "${HEALTH_URL}" >/dev/null 2>&1; then
+  if docker compose exec -T api python -c \
+    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')" \
+    >/dev/null 2>&1; then
     ok=1
     break
   fi
@@ -51,6 +53,7 @@ done
 if [[ "${ok}" -ne 1 ]]; then
   echo "ERROR: API health check failed after deploy." >&2
   docker compose ps >&2 || true
+  docker compose logs --tail=80 api >&2 || true
   exit 1
 fi
 

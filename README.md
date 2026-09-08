@@ -180,7 +180,7 @@ Live win-probability features are **not** the pregame set. Use `baseball_analyze
 
 ## Full local stack (Docker)
 
-The local happy path is one Compose command. Dockerfiles live under `infra/` (`Dockerfile.api`, `Dockerfile.worker`, `Dockerfile.web`).
+The local happy path is one Compose command. Dockerfiles live under `infra/` (`Dockerfile.api`, `Dockerfile.worker`, `Dockerfile.web`). Host ports come from `docker-compose.override.yml` (auto-merged locally).
 
 ```bash
 cp .env.example .env   # optional; Compose has sensible local defaults
@@ -204,6 +204,18 @@ Infra-only (Postgres + Redis) for local Python/Node development:
 docker compose up -d db redis
 ```
 
+## Oracle Always Free (production)
+
+Full-stack hosting on a single Always Free VM is documented in [`infra/HOSTING.md`](infra/HOSTING.md): provision Ampere A1 (2–4 OCPU / 12–24 GB preferred), bootstrap Docker, set production `.env` (`COMPOSE_FILE`, `DOMAIN`, secrets), and run Compose behind **Caddy** (Let’s Encrypt on 80/443). Public layout is `https://$DOMAIN/` → web and `https://$DOMAIN/api/*` → API.
+
+```bash
+# On the VM after cloning
+./infra/oracle-bootstrap.sh
+# edit .env for production (COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml, …)
+docker compose up -d --build
+```
+
+Cloudflare Tunnel (HTTPS without inbound 80/443) is covered in the same doc. CI deploy over SSH uses [`infra/deploy.sh`](infra/deploy.sh).
 ## Backend API (Stage 2)
 
 FastAPI lives under `backend/`. The API depends on the editable `baseball-analyze` package.
@@ -231,7 +243,7 @@ cd backend
 alembic upgrade head
 ```
 
-Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`, `REDIS_URL`, `REDIS_ENABLED`, `LIVE_CACHE_TTL_COMPLETED_SECONDS`, `LIVE_PUBSUB_ENABLED`, `LIVE_POLL_INTERVAL_SECONDS`, `LIVE_POLL_GAME_DELAY_SECONDS`, `LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS`, `LIVE_SYNC_RETRIES`, `LIVE_SYNC_BACKOFF_SECONDS`, `LIVE_STALE_AFTER_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS`, `NOTIFICATION_POLL_INTERVAL_SECONDS`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` (also `OPENAI_*` fallbacks used by the chat REPL).
+Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`, `REDIS_URL`, `REDIS_ENABLED`, `LIVE_CACHE_TTL_COMPLETED_SECONDS`, `LIVE_PUBSUB_ENABLED`, `LIVE_POLL_INTERVAL_SECONDS`, `LIVE_POLL_GAME_DELAY_SECONDS`, `LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS`, `LIVE_SYNC_RETRIES`, `LIVE_SYNC_BACKOFF_SECONDS`, `LIVE_STALE_AFTER_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS`, `NOTIFICATION_POLL_INTERVAL_SECONDS`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` (also `OPENAI_*` fallbacks used by the chat REPL).
 
 The live worker (`baseball-live-worker`) writes current game state to Redis and Postgres (`games.live_state`) after each poll. Completed games expire from the cache after `LIVE_CACHE_TTL_COMPLETED_SECONDS` (default 1 hour). When `LIVE_PUBSUB_ENABLED` is true, updates are published on `live:game:{game_pk}:updates` for API/WebSocket fan-out.
 
@@ -346,12 +358,12 @@ Workflows live under `.github/workflows/`:
 
 Deploy is **opt-in** so everyday pushes stay green before a VM exists. To enable automatic deploys on `main`:
 
-1. Clone this repo on the host (e.g. `~/baseball-chatbot`) and create a production `.env` there.
+1. Follow [`infra/HOSTING.md`](infra/HOSTING.md): provision the Oracle Always Free VM, bootstrap Docker, clone this repo (e.g. `~/baseball-chatbot`), and create a production `.env` with `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml`.
 2. Add repository **secrets**: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (private key). Optional: `DEPLOY_PORT` (default `22`), `DEPLOY_PATH` (default `~/baseball-chatbot`).
 3. Set repository **variable** `ENABLE_DEPLOY` = `true`.
 4. Or run **Actions → Deploy → Run workflow** without enabling auto-deploy.
 
-The remote script is [`infra/deploy.sh`](infra/deploy.sh). The API container entrypoint also migrates on boot; the deploy job runs Alembic explicitly so schema updates apply even if the API image was already warm.
+The remote script is [`infra/deploy.sh`](infra/deploy.sh). The API container entrypoint also migrates on boot; the deploy job runs Alembic explicitly so schema updates apply even if the API image was already warm. Health is checked inside the API container (works when only Caddy publishes 80/443).
 
 ## Troubleshooting
 

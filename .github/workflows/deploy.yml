@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     # Opt-in via repo variable so pushes to main stay green before a VM exists.
     # Set Actions variable ENABLE_DEPLOY=true and configure the secrets below.
+    # Host setup: infra/HOSTING.md (Oracle Always Free + COMPOSE_FILE prod overlay).
     if: >-
       github.event_name == 'workflow_dispatch' ||
       vars.ENABLE_DEPLOY == 'true'

@@ -1,0 +1,21 @@
+# Reverse proxy for the Compose stack on a single Oracle Always Free VM.
+# DOMAIN is injected by docker-compose.prod.yml (e.g. baseball.example.com).
+#
+# Public layout:
+#   https://$DOMAIN/       → Next.js (web:3000)
+#   https://$DOMAIN/api/*  → FastAPI (api:8000), /api prefix stripped
+#
+# Set NEXT_PUBLIC_API_URL=https://$DOMAIN/api when building the web image.
+# Caddy obtains Let's Encrypt certificates automatically when DNS points here.
+
+{$DOMAIN} {
+	encode gzip
+
+	handle_path /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
