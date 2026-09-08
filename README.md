@@ -54,7 +54,7 @@ A convenience copy is also written to the configured `out` path (default `artifa
 
 These limits are intentional for v1 pipeline sanity checks; tighter backtests need daily snapshots or play-by-play reconstruction.
 
-1. **Full-season FanGraphs tables** — Team offense (`wRC+`), team pitching (`FIP`), and bullpen aggregates use the **entire season’s** FanGraphs table for that year, not stats strictly “as of” each game date. Early-season games therefore see end-of-season team strength.
+1. **Full-season Savant tables** — Team offense (xwOBA scaled as `wRC+`), team pitching (FIP from Savant counting stats), and bullpen aggregates use the **entire season’s** leaderboard for that year, not stats strictly “as of” each game date. Early-season games therefore see end-of-season team strength.
 2. **Box-score starting pitchers** — Training labels use starters from the **post-game box score**, not pregame probables. Inference uses scheduled probables from the MLB schedule API. Train and predict are aligned on *features* for live use, but historical training rows embed post-game pitcher identity.
 3. **Park factors** — Static defaults in `data/park_data.py`; refresh from FanGraphs if you need current-year park precision.
 

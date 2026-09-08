@@ -210,7 +210,7 @@ def _run_training(cfg: TrainingConfig) -> None:
     random_state = cfg.random_state
 
     for s in season_list:
-        typer.echo(f"Loading FanGraphs bullpen table for {s} (cached under ./cache/)...")
+        typer.echo(f"Loading Savant bullpen table for {s} (cached under ./cache/)...")
         bullpen_fip_by_team(s, cache_dir=cache_dir)
 
     X, y, rows = build_in_game_training_sample(

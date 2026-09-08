@@ -166,6 +166,28 @@ def team_id_to_abbrev_map(sport_id: int = 1) -> dict[int, str]:
     return {t["id"]: t["abbreviation"] for t in fetch_teams(sport_id)}
 
 
+def fetch_season_stat_splits(
+    season: int,
+    *,
+    group: str,
+    sport_id: int = 1,
+    limit: int = 2000,
+) -> list[dict[str, Any]]:
+    """League-wide season hitting/pitching splits (player + team + stat)."""
+    payload = _get(
+        "/stats",
+        {
+            "stats": "season",
+            "group": group,
+            "season": int(season),
+            "sportIds": sport_id,
+            "limit": int(limit),
+            "playerPool": "all",
+        },
+    )
+    return list((payload.get("stats") or [{}])[0].get("splits") or [])
+
+
 def _team_abbrev(team: dict[str, Any]) -> str:
     ab = team.get("abbreviation") or team.get("teamCode") or team.get("fileCode")
     if ab:

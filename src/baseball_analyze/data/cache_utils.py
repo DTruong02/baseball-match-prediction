@@ -1,4 +1,4 @@
-"""Simple on-disk cache for expensive pybaseball / DataFrame loads."""
+"""Simple on-disk cache for expensive season-table / DataFrame loads."""
 
 from __future__ import annotations
 

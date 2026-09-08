@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "baseball-analyze"
 version = "0.1.0"
-description = "Pregame MLB home win probability from MLB Stats API + FanGraphs (pybaseball)"
+description = "Pregame MLB home win probability from MLB Stats API + Baseball Savant"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [

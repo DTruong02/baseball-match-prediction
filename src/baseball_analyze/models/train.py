@@ -126,7 +126,7 @@ def build_training_sample(
             if max_scans is not None and scan_count > max_scans:
                 raise RuntimeError(
                     f"Stopped after {scan_count} schedule rows without enough successes; "
-                    "try a different season or inspect network/pybaseball errors."
+                    "try a different season or inspect network/Savant errors."
                 )
             if g.detailed_state not in ("Final", "Completed Early"):
                 continue
@@ -184,7 +184,7 @@ def _run_training(cfg: TrainingConfig) -> None:
     random_state = cfg.random_state
 
     for s in season_list:
-        typer.echo(f"Loading FanGraphs season tables for {s} (cached under ./cache/)...")
+        typer.echo(f"Loading Savant season tables for {s} (cached under ./cache/)...")
         load_team_batting(s, cache_dir=cache_dir)
         load_team_pitching(s, cache_dir=cache_dir)
         bullpen_fip_by_team(s, cache_dir=cache_dir)
