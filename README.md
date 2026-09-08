@@ -178,17 +178,37 @@ Live win-probability features are **not** the pregame set. Use `baseball_analyze
 - `state_from_linescore` / `build_in_game_features_from_feed` — current linescore snapshot for live inference
 - Train/eval: `baseball-analyze-train-in-game` (see above); register with `kind=in_game`
 
-## Backend API (Stage 2)
+## Full local stack (Docker)
 
-Local Postgres and a FastAPI skeleton live under `backend/`. The API depends on the editable `baseball-analyze` package.
+The local happy path is one Compose command. Dockerfiles live under `infra/` (`Dockerfile.api`, `Dockerfile.worker`, `Dockerfile.web`).
 
-**Start Postgres and Redis:**
+```bash
+cp .env.example .env   # optional; Compose has sensible local defaults
+docker compose up --build
+```
+
+This starts **Postgres**, **Redis**, **API** (runs Alembic migrations on boot), **live worker**, **notification worker**, and **Next.js** web.
+
+| Service | URL / notes |
+|---------|-------------|
+| Web | http://localhost:3000 |
+| API | http://localhost:8000 (`GET /health`) |
+| Postgres | `localhost:5432` (`baseball` / `baseball`) |
+| Redis | `localhost:6379` |
+
+Host `./artifacts` and `./cache` are mounted into the API and live worker so trained models and FanGraphs caches persist. Override secrets and LLM/SMTP settings via `.env` (see `.env.example`). Rebuild the web image after changing `NEXT_PUBLIC_API_URL` (default `http://localhost:8000` for browser → host-mapped API).
+
+Infra-only (Postgres + Redis) for local Python/Node development:
 
 ```bash
 docker compose up -d db redis
 ```
 
-**Install and run the API** (from repo root):
+## Backend API (Stage 2)
+
+FastAPI lives under `backend/`. The API depends on the editable `baseball-analyze` package.
+
+**Install and run the API** (from repo root, with `db`/`redis` up):
 
 ```bash
 pip install -e ".[backend]"
@@ -204,7 +224,7 @@ uvicorn baseball_backend.main:app --reload
 
 **Health check:** `GET http://localhost:8000/health`
 
-**Database migrations** (from `backend/`, with Postgres running):
+**Database migrations** (from `backend/`, with Postgres running; also run automatically by the API container):
 
 ```bash
 cd backend

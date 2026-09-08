@@ -25,5 +25,122 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.api
+    image: baseball-api:local
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://baseball:baseball@db:5432/baseball
+      REDIS_URL: redis://redis:6379/0
+      REDIS_ENABLED: "true"
+      ARTIFACTS_ROOT: /app/artifacts
+      API_HOST: 0.0.0.0
+      API_PORT: "8000"
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+      LIVE_CACHE_TTL_COMPLETED_SECONDS: ${LIVE_CACHE_TTL_COMPLETED_SECONDS:-3600}
+      LIVE_PUBSUB_ENABLED: ${LIVE_PUBSUB_ENABLED:-true}
+      LIVE_POLL_INTERVAL_SECONDS: ${LIVE_POLL_INTERVAL_SECONDS:-15}
+      LIVE_STALE_AFTER_SECONDS: ${LIVE_STALE_AFTER_SECONDS:-90}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./cache:/app/cache
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.worker
+    image: baseball-worker:local
+    environment:
+      DATABASE_URL: postgresql://baseball:baseball@db:5432/baseball
+      REDIS_URL: redis://redis:6379/0
+      REDIS_ENABLED: "true"
+      ARTIFACTS_ROOT: /app/artifacts
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      LIVE_CACHE_TTL_COMPLETED_SECONDS: ${LIVE_CACHE_TTL_COMPLETED_SECONDS:-3600}
+      LIVE_PUBSUB_ENABLED: ${LIVE_PUBSUB_ENABLED:-true}
+      LIVE_POLL_INTERVAL_SECONDS: ${LIVE_POLL_INTERVAL_SECONDS:-15}
+      LIVE_POLL_GAME_DELAY_SECONDS: ${LIVE_POLL_GAME_DELAY_SECONDS:-0.5}
+      LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS: ${LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS:-0.5}
+      LIVE_SYNC_RETRIES: ${LIVE_SYNC_RETRIES:-2}
+      LIVE_SYNC_BACKOFF_SECONDS: ${LIVE_SYNC_BACKOFF_SECONDS:-0.5}
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./cache:/app/cache
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  notification-worker:
+    image: baseball-worker:local
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.worker
+    command: ["baseball-notification-worker"]
+    environment:
+      DATABASE_URL: postgresql://baseball:baseball@db:5432/baseball
+      REDIS_URL: redis://redis:6379/0
+      REDIS_ENABLED: "true"
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      NOTIFICATION_POLL_INTERVAL_SECONDS: ${NOTIFICATION_POLL_INTERVAL_SECONDS:-30}
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    image: baseball-web:local
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   postgres_data:
