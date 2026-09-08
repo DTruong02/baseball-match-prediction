@@ -192,7 +192,7 @@ This starts **Postgres**, **Redis**, **API** (runs Alembic migrations on boot), 
 | Service | URL / notes |
 |---------|-------------|
 | Web | http://localhost:3000 |
-| API | http://localhost:8000 (`GET /health`) |
+| API | http://localhost:8000 (`GET /health`, `/ready`, `/metrics`) |
 | Postgres | `localhost:5432` (`baseball` / `baseball`) |
 | Redis | `localhost:6379` |
 
@@ -234,7 +234,12 @@ Or with uvicorn directly:
 uvicorn baseball_backend.main:app --reload
 ```
 
-**Health check:** `GET http://localhost:8000/health`
+**Health / readiness:**
+- `GET /health` — liveness
+- `GET /ready` — Postgres + Redis (when enabled); includes worker heartbeat lag and cache counters
+- `GET /metrics` — Prometheus metrics (API latency, 5xx rate, live cache hit/miss, worker lag)
+
+JSON structured logs default on (`LOG_LEVEL`, `LOG_JSON`). Light load test: `python scripts/load_test.py --base-url http://127.0.0.1:8000`. See [`infra/HOSTING.md`](infra/HOSTING.md#observability-stage-74).
 
 **Database migrations** (from `backend/`, with Postgres running; also run automatically by the API container):
 
@@ -243,7 +248,7 @@ cd backend
 alembic upgrade head
 ```
 
-Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`, `REDIS_URL`, `REDIS_ENABLED`, `LIVE_CACHE_TTL_COMPLETED_SECONDS`, `LIVE_PUBSUB_ENABLED`, `LIVE_POLL_INTERVAL_SECONDS`, `LIVE_POLL_GAME_DELAY_SECONDS`, `LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS`, `LIVE_SYNC_RETRIES`, `LIVE_SYNC_BACKOFF_SECONDS`, `LIVE_STALE_AFTER_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS`, `NOTIFICATION_POLL_INTERVAL_SECONDS`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` (also `OPENAI_*` fallbacks used by the chat REPL).
+Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`, `REDIS_URL`, `REDIS_ENABLED`, `LIVE_CACHE_TTL_COMPLETED_SECONDS`, `LIVE_PUBSUB_ENABLED`, `LIVE_POLL_INTERVAL_SECONDS`, `LIVE_POLL_GAME_DELAY_SECONDS`, `LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS`, `LIVE_SYNC_RETRIES`, `LIVE_SYNC_BACKOFF_SECONDS`, `LIVE_STALE_AFTER_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS`, `NOTIFICATION_POLL_INTERVAL_SECONDS`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` (also `OPENAI_*` fallbacks used by the chat REPL), `LOG_LEVEL`, `LOG_JSON`, `METRICS_ENABLED`.
 
 The live worker (`baseball-live-worker`) writes current game state to Redis and Postgres (`games.live_state`) after each poll. Completed games expire from the cache after `LIVE_CACHE_TTL_COMPLETED_SECONDS` (default 1 hour). When `LIVE_PUBSUB_ENABLED` is true, updates are published on `live:game:{game_pk}:updates` for API/WebSocket fan-out.
 

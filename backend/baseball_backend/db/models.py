@@ -97,6 +97,7 @@ class Team(Base):
     """MLB team; ``id`` is the MLB Stats API team id."""
 
     __tablename__ = "teams"
+    __table_args__ = (Index("ix_teams_abbreviation", "abbreviation"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     abbreviation: Mapped[str] = mapped_column(String(8), nullable=False)
@@ -121,6 +122,7 @@ class Player(Base):
     """MLB player; ``id`` is the MLB Stats API player id."""
 
     __tablename__ = "players"
+    __table_args__ = (Index("ix_players_team_id", "team_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -288,6 +290,7 @@ class Game(Base):
     __tablename__ = "games"
     __table_args__ = (
         Index("ix_games_game_date", "game_date"),
+        Index("ix_games_status_game_date", "status", "game_date"),
         UniqueConstraint("game_pk", name="uq_games_game_pk"),
     )
 
@@ -378,6 +381,7 @@ class ModelVersion(Base):
     """Registered ML artifact from Stage 1 training runs."""
 
     __tablename__ = "model_versions"
+    __table_args__ = (Index("ix_model_versions_kind_status", "kind", "status"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
@@ -411,6 +415,7 @@ class Prediction(Base):
             "model_version_id",
             name="uq_predictions_game_model_version",
         ),
+        Index("ix_predictions_model_version_id", "model_version_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

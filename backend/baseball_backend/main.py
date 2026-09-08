@@ -1,25 +1,29 @@
 import asyncio
 from contextlib import asynccontextmanager
-from importlib.metadata import PackageNotFoundError, version
 from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from baseball_backend.logging_config import configure_logging
+from baseball_backend.middleware.request_metrics import RequestMetricsMiddleware
 from baseball_backend.routes.ai import router as ai_router
 from baseball_backend.routes.analytics import router as analytics_router
 from baseball_backend.routes.auth import router as auth_router
 from baseball_backend.routes.follows import router as follows_router
 from baseball_backend.routes.games import router as games_router
+from baseball_backend.routes.health import router as health_router
 from baseball_backend.routes.model import router as model_router
 from baseball_backend.routes.notifications import router as notifications_router
 from baseball_backend.routes.players import router as players_router
 from baseball_backend.routes.predictions import router as predictions_router
 from baseball_backend.routes.teams import router as teams_router
 from baseball_backend.routes.ws import router as ws_router
-from baseball_backend.redis_client import ping_redis
 from baseball_backend.services.live_ws import configure_live_fanout, shutdown_live_fanout
 from baseball_backend.settings import get_settings
+
+_settings = get_settings()
+configure_logging(level=_settings.log_level, json_logs=_settings.log_json)
 
 
 @asynccontextmanager
@@ -44,6 +48,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+if _settings.metrics_enabled:
+    app.add_middleware(RequestMetricsMiddleware)
+
+app.include_router(health_router)
 app.include_router(ai_router)
 app.include_router(analytics_router)
 app.include_router(auth_router)
@@ -57,31 +65,11 @@ app.include_router(teams_router)
 app.include_router(ws_router)
 
 
-@app.get("/health")
-def health() -> dict[str, object]:
-    settings = get_settings()
-    ml_version: str | None
-    try:
-        ml_version = version("baseball-analyze")
-    except PackageNotFoundError:
-        ml_version = None
-
-    redis_configured = settings.redis_enabled
-    redis_ok = ping_redis() if redis_configured else None
-
-    return {
-        "status": "ok",
-        "database_configured": bool(settings.database_url),
-        "redis_configured": redis_configured,
-        "redis_ok": redis_ok,
-        "ml_package_version": ml_version,
-    }
-
-
 def main() -> None:
     import uvicorn
 
     settings = get_settings()
+    configure_logging(level=settings.log_level, json_logs=settings.log_json)
     uvicorn.run(
         "baseball_backend.main:app",
         host=settings.api_host,

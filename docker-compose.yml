@@ -52,6 +52,9 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_JSON: ${LOG_JSON:-true}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
     volumes:
       - ./artifacts:/app/artifacts
       - ./cache:/app/cache
@@ -66,7 +69,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready')",
         ]
       interval: 10s
       timeout: 5s
@@ -92,6 +95,8 @@ services:
       LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS: ${LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS:-0.5}
       LIVE_SYNC_RETRIES: ${LIVE_SYNC_RETRIES:-2}
       LIVE_SYNC_BACKOFF_SECONDS: ${LIVE_SYNC_BACKOFF_SECONDS:-0.5}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_JSON: ${LOG_JSON:-true}
     volumes:
       - ./artifacts:/app/artifacts
       - ./cache:/app/cache
@@ -122,6 +127,8 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
       NOTIFICATION_POLL_INTERVAL_SECONDS: ${NOTIFICATION_POLL_INTERVAL_SECONDS:-30}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_JSON: ${LOG_JSON:-true}
     depends_on:
       db:
         condition: service_healthy

@@ -1,6 +1,6 @@
 """Metadata and index coverage for the initial database schema."""
 
-from baseball_backend.db import Base, Game, GameEvent, User
+from baseball_backend.db import Base, Game, GameEvent, ModelVersion, Player, Prediction, Team, User
 
 
 def test_all_tables_registered() -> None:
@@ -34,6 +34,11 @@ def test_game_indexes() -> None:
     assert [column.name for column in indexes["ix_games_game_date"].columns] == [
         "game_date"
     ]
+    assert "ix_games_status_game_date" in indexes
+    assert [column.name for column in indexes["ix_games_status_game_date"].columns] == [
+        "status",
+        "game_date",
+    ]
 
     game_pk_unique = any(
         constraint.name == "uq_games_game_pk"
@@ -57,3 +62,20 @@ def test_game_event_indexes() -> None:
         if hasattr(constraint, "name")
     )
     assert event_unique
+
+
+def test_observability_hot_path_indexes() -> None:
+    model_indexes = {index.name: index for index in ModelVersion.__table__.indexes}
+    assert "ix_model_versions_kind_status" in model_indexes
+    assert [
+        column.name for column in model_indexes["ix_model_versions_kind_status"].columns
+    ] == ["kind", "status"]
+
+    player_indexes = {index.name: index for index in Player.__table__.indexes}
+    assert "ix_players_team_id" in player_indexes
+
+    prediction_indexes = {index.name: index for index in Prediction.__table__.indexes}
+    assert "ix_predictions_model_version_id" in prediction_indexes
+
+    team_indexes = {index.name: index for index in Team.__table__.indexes}
+    assert "ix_teams_abbreviation" in team_indexes

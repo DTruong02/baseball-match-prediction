@@ -100,12 +100,12 @@ Use a **URL-safe** Postgres password (alphanumeric) so `DATABASE_URL` embedding 
 cd ~/baseball-chatbot
 docker compose up -d --build
 docker compose ps
-docker compose exec -T api python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read().decode())"
+docker compose exec -T api python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/ready').read().decode())"
 ```
 
 Or run [`infra/deploy.sh`](deploy.sh) after the first clone (also used by GitHub Actions).
 
-Open `https://$DOMAIN` and `https://$DOMAIN/api/health`.
+Open `https://$DOMAIN`, `https://$DOMAIN/api/health`, and `https://$DOMAIN/api/ready`.
 
 Register a trained model into the VM’s `artifacts/` mount and activate it (same commands as local; see root README).
 
@@ -149,7 +149,33 @@ After the VM is up and `~/baseball-chatbot` has a production `.env` with `COMPOS
 ## Quick verification checklist
 
 - [ ] `docker compose ps` — db, redis, api, worker, notification-worker, web, caddy healthy/up
-- [ ] `https://$DOMAIN/api/health` returns `"status":"ok"`
+- [ ] `https://$DOMAIN/api/health` returns `"status":"ok"` (liveness)
+- [ ] `https://$DOMAIN/api/ready` returns `"status":"ready"` (DB + Redis)
+- [ ] `https://$DOMAIN/api/metrics` returns Prometheus text (latency, errors, cache, worker lag)
 - [ ] Login / today’s schedule loads in the browser
 - [ ] Live game page connects (WS or polling fallback)
 - [ ] OCI + host firewall: only 22/80/443 from the public internet
+
+## Observability (Stage 7.4)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | Liveness — process up; optional Redis ping |
+| `GET /ready` | Readiness — Postgres `SELECT 1`, Redis when enabled; reports worker heartbeats and cache counters |
+| `GET /metrics` | Prometheus exposition: HTTP latency/error rate, live cache hit/miss, worker lag |
+
+API and workers emit **JSON logs** by default (`LOG_JSON=true`, `LOG_LEVEL=INFO`). Each HTTP response includes `X-Request-Id`.
+
+Workers write Redis heartbeats (`worker:live:heartbeat`, `worker:notification:heartbeat`). Lag gauges on `/metrics` and `/ready` are derived from those timestamps.
+
+**DB indexes (review):** hot paths already covered (`games.game_date`, `game_pk`, events by sequence, notifications by channel/status). Migration `20260908_0008` adds `(model_versions.kind, status)`, `players.team_id`, `(games.status, game_date)`, `predictions.model_version_id`, and `teams.abbreviation`.
+
+**Light load test** (from a machine that can reach the API):
+
+```bash
+pip install -e ".[backend]"
+python scripts/load_test.py --base-url http://127.0.0.1:8000 --concurrency 20 --requests 200
+python scripts/load_test.py --base-url http://127.0.0.1:8000 --ws-game-pk <GAME_PK> --ws-clients 5 --ws-duration 10
+```
+
+On production, prefer scraping `/metrics` from the Docker network (or restrict `/api/metrics` at the edge) rather than exposing it broadly without auth.

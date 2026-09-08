@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from baseball_backend.db.models import Game
+from baseball_backend.metrics import record_live_cache_hit, record_live_cache_miss
 from baseball_backend.redis_client import get_redis_client
 from baseball_backend.services.live_cache import (
     LIVE_UPDATE_CHANNEL_PATTERN,
@@ -176,8 +177,10 @@ def resolve_live_snapshot(
     """
     cached = get_cached_live_state(game_pk)
     if cached is not None:
+        record_live_cache_hit()
         return cached, "redis", snapshot_is_degraded(cached, source="redis")
 
+    record_live_cache_miss()
     snapshot = postgres_live_snapshot(db, game_pk)
     if snapshot is not None:
         return snapshot, "postgres", True

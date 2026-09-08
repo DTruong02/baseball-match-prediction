@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = ""
     llm_model: str = ""
+    # Observability (Stage 7.4)
+    log_level: str = "INFO"
+    log_json: bool = True
+    metrics_enabled: bool = True
 
 
 @lru_cache

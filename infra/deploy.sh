@@ -37,11 +37,11 @@ docker compose run --rm --entrypoint sh api -c \
 echo "==> Starting Compose stack"
 docker compose up -d --remove-orphans
 
-echo "==> Waiting for API health (in-container)"
+echo "==> Waiting for API readiness (in-container)"
 ok=0
 for i in $(seq 1 "${HEALTH_RETRIES}"); do
   if docker compose exec -T api python -c \
-    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')" \
+    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready')" \
     >/dev/null 2>&1; then
     ok=1
     break
@@ -51,7 +51,7 @@ for i in $(seq 1 "${HEALTH_RETRIES}"); do
 done
 
 if [[ "${ok}" -ne 1 ]]; then
-  echo "ERROR: API health check failed after deploy." >&2
+  echo "ERROR: API readiness check failed after deploy." >&2
   docker compose ps >&2 || true
   docker compose logs --tail=80 api >&2 || true
   exit 1
