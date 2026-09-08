@@ -215,7 +215,7 @@ Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_H
 
 The live worker (`baseball-live-worker`) writes current game state to Redis and Postgres (`games.live_state`) after each poll. Completed games expire from the cache after `LIVE_CACHE_TTL_COMPLETED_SECONDS` (default 1 hour). When `LIVE_PUBSUB_ENABLED` is true, updates are published on `live:game:{game_pk}:updates` for API/WebSocket fan-out.
 
-**Notifications (Stage 6):** preferences and in-app inbox live under `/notifications`. Enqueue via `notification_service.enqueue_notification` (used by alert rules in Stage 6.3): creates an immediate in-app row when enabled, and a pending email row when email is enabled. Deliver email with:
+**Notifications (Stage 6):** preferences and in-app inbox live under `/notifications`. Alert rules (Stage 6.3) run from the live worker, schedule sync, and prediction jobs — not on request handlers — and call `notification_service.enqueue_notification` for followers of the game’s teams (or relevant players). Rules cover game start, WP swings above the user’s threshold, high-leverage late innings with runners on, game final, and new pregame predictions. Dispatches are deduped in `alert_dispatches` so poll loops stay idempotent. Deliver email with:
 
 ```bash
 baseball-notification-worker --once

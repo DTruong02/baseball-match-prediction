@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Any
 
@@ -10,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from baseball_analyze.data.mlb_client import ScheduledGame, fetch_schedule_for_date, fetch_teams
 from baseball_backend.db.models import Game, Player, Team
+
+logger = logging.getLogger(__name__)
 
 _FINAL_STATES = frozenset({"Final", "Game Over", "Completed Early"})
 
@@ -77,8 +80,12 @@ def _outcome_fields(scheduled: ScheduledGame) -> dict[str, int | str | None]:
     return fields
 
 
-def _upsert_game(db: Session, scheduled: ScheduledGame) -> Game:
+def _upsert_game(
+    db: Session, scheduled: ScheduledGame
+) -> tuple[Game, str | None, str | None]:
     game = db.scalar(select(Game).where(Game.game_pk == scheduled.game_pk))
+    previous_status = game.status if game is not None else None
+    previous_detailed = game.detailed_state if game is not None else None
     fields = {
         "game_date": date.fromisoformat(scheduled.game_date),
         "season": scheduled.season,
@@ -98,17 +105,19 @@ def _upsert_game(db: Session, scheduled: ScheduledGame) -> Game:
     else:
         for key, value in fields.items():
             setattr(game, key, value)
-    return game
+    return game, previous_status, previous_detailed
 
 
 def sync_schedule_for_date(db: Session, game_date: str) -> int:
     """
     Fetch MLB schedule for ``game_date`` (YYYY-MM-DD) and upsert teams/games.
 
-    Returns the number of games synced.
+    Returns the number of games synced. After commit, evaluates start/final
+    alert rules for followed teams (idempotent via ``AlertDispatch``).
     """
     teams_cache = {int(team["id"]): team for team in fetch_teams()}
     scheduled_games = fetch_schedule_for_date(game_date)
+    status_transitions: list[tuple[Game, str | None, str | None]] = []
 
     for scheduled in scheduled_games:
         _upsert_team(db, scheduled.home_team_id, scheduled.home_abbrev, teams_cache)
@@ -129,7 +138,24 @@ def sync_schedule_for_date(db: Session, game_date: str) -> int:
                 scheduled.away_team_id,
             )
 
-        _upsert_game(db, scheduled)
+        game, prev_status, prev_detailed = _upsert_game(db, scheduled)
+        status_transitions.append((game, prev_status, prev_detailed))
 
     db.commit()
+
+    try:
+        from baseball_backend.services.alert_rules import evaluate_schedule_status_alerts
+
+        for game, prev_status, prev_detailed in status_transitions:
+            evaluate_schedule_status_alerts(
+                db,
+                game,
+                previous_status=prev_status,
+                previous_detailed_state=prev_detailed,
+            )
+    except Exception:
+        logger.exception(
+            "Schedule alert evaluation failed for date=%s", game_date
+        )
+
     return len(scheduled_games)

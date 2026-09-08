@@ -19,6 +19,35 @@ def test_normalize_game_state_from_fixture() -> None:
     assert state.home_score == 3
     assert state.away_score == 4
     assert state.current_inning is not None
+    # Final fixture has empty offense bases
+    assert state.on_1b is False
+    assert state.on_2b is False
+    assert state.on_3b is False
+
+
+def test_normalize_bases_from_offense_objects() -> None:
+    feed = {
+        "gameData": {"status": {"abstractGameState": "Live", "detailedState": "In Progress"}},
+        "liveData": {
+            "linescore": {
+                "currentInning": 8,
+                "inningState": "Bottom",
+                "isTopInning": False,
+                "outs": 1,
+                "balls": 0,
+                "strikes": 1,
+                "teams": {"home": {"runs": 2}, "away": {"runs": 2}},
+                "offense": {
+                    "first": {"id": 1},
+                    "third": {"id": 3},
+                },
+            }
+        },
+    }
+    state = normalize_game_state(feed)
+    assert state.on_1b is True
+    assert state.on_2b is False
+    assert state.on_3b is True
 
 
 def test_normalize_play_events_dedup_ids() -> None:

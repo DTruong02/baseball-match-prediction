@@ -69,6 +69,12 @@ def serialize_live_state(
         "events_inserted": events_inserted,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if state.on_1b is not None:
+        payload["on_1b"] = state.on_1b
+    if state.on_2b is not None:
+        payload["on_2b"] = state.on_2b
+    if state.on_3b is not None:
+        payload["on_3b"] = state.on_3b
     if pitcher_id is not None:
         payload["pitcher_id"] = pitcher_id
     if home_win_proba is not None:

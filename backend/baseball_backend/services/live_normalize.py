@@ -20,6 +20,9 @@ class GameLiveState:
     outs: int | None
     balls: int | None
     strikes: int | None
+    on_1b: bool | None = None
+    on_2b: bool | None = None
+    on_3b: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,15 @@ def _optional_bool(value: Any) -> bool | None:
     return bool(value)
 
 
+def _bases_from_offense(offense: dict[str, Any]) -> tuple[bool, bool, bool]:
+    """Occupied bases from linescore offense (``onFirst`` or runner objects)."""
+    return (
+        bool(offense.get("onFirst") or offense.get("first")),
+        bool(offense.get("onSecond") or offense.get("second")),
+        bool(offense.get("onThird") or offense.get("third")),
+    )
+
+
 def normalize_game_state(
     live_feed: dict[str, Any],
     *,
@@ -60,6 +72,8 @@ def normalize_game_state(
     live_data = live_feed.get("liveData") or {}
     linescore = live_data.get("linescore") or {}
     teams = linescore.get("teams") or {}
+    offense = linescore.get("offense") or {}
+    on_1b, on_2b, on_3b = _bases_from_offense(offense)
 
     home_runs = _optional_int((teams.get("home") or {}).get("runs")) or 0
     away_runs = _optional_int((teams.get("away") or {}).get("runs")) or 0
@@ -82,6 +96,9 @@ def normalize_game_state(
         outs=_optional_int(linescore.get("outs")),
         balls=_optional_int(linescore.get("balls")),
         strikes=_optional_int(linescore.get("strikes")),
+        on_1b=on_1b,
+        on_2b=on_2b,
+        on_3b=on_3b,
     )
 
 

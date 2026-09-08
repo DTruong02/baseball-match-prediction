@@ -152,6 +152,9 @@ def _previous_live_state(game: Game) -> GameLiveState | None:
             outs=snapshot.get("outs"),
             balls=snapshot.get("balls"),
             strikes=snapshot.get("strikes"),
+            on_1b=snapshot.get("on_1b"),
+            on_2b=snapshot.get("on_2b"),
+            on_3b=snapshot.get("on_3b"),
         )
     except (TypeError, ValueError):
         return None
@@ -368,6 +371,25 @@ def sync_live_game(
 
     db.commit()
     cache_live_state(game_pk, state, **snapshot_kwargs)
+
+    prev_home_wp = _optional_float(previous_snapshot.get("home_win_proba"))
+    new_home_wp = _optional_float(snapshot_kwargs.get("home_win_proba"))
+    try:
+        from baseball_backend.services.alert_rules import evaluate_live_game_alerts
+
+        evaluate_live_game_alerts(
+            db,
+            game,
+            previous_state=previous_state,
+            new_state=state,
+            previous_home_wp=prev_home_wp,
+            new_home_wp=new_home_wp,
+            live_wp_updated=live_wp_updated,
+            pitcher_id=current_pitcher_id,
+        )
+    except Exception:
+        logger.exception("Alert rules failed for game_pk=%s", game_pk)
+
     summary: dict[str, Any] = {
         "game_pk": game_pk,
         "events_inserted": inserted,

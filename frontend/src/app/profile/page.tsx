@@ -541,7 +541,8 @@ export default function ProfilePage() {
               <p className="text-sm text-muted">Loading inbox…</p>
             ) : notifications.length === 0 ? (
               <p className="text-sm text-muted">
-                Alerts will appear here once notification rules start firing.
+                Alerts for followed teams appear here when games start, WP swings,
+                high-leverage situations, finals, or new predictions fire.
               </p>
             ) : (
               <ul className="divide-y divide-border rounded-lg border border-border">

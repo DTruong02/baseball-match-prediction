@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -147,16 +148,16 @@ class UserFollow(Base):
             "user_id",
             "team_id",
             unique=True,
-            postgresql_where="team_id IS NOT NULL",
-            sqlite_where="team_id IS NOT NULL",
+            postgresql_where=text("team_id IS NOT NULL"),
+            sqlite_where=text("team_id IS NOT NULL"),
         ),
         Index(
             "uq_user_follows_user_player",
             "user_id",
             "player_id",
             unique=True,
-            postgresql_where="player_id IS NOT NULL",
-            sqlite_where="player_id IS NOT NULL",
+            postgresql_where=text("player_id IS NOT NULL"),
+            sqlite_where=text("player_id IS NOT NULL"),
         ),
         Index("ix_user_follows_user_id", "user_id"),
     )
@@ -253,6 +254,32 @@ class Notification(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="notifications")
+
+
+class AlertDispatch(Base):
+    """Idempotency ledger so poll loops do not re-fire the same alert."""
+
+    __tablename__ = "alert_dispatches"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "alert_type",
+            "dedupe_key",
+            name="uq_alert_dispatches_user_type_key",
+        ),
+        Index("ix_alert_dispatches_game_pk", "game_pk"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    alert_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    game_pk: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class Game(Base):

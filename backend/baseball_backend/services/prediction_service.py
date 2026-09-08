@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Any
 
@@ -14,6 +15,8 @@ from baseball_backend.services.model_registry import (
     ModelVersionNotFoundError,
     get_active_pregame_model,
 )
+
+logger = logging.getLogger(__name__)
 
 _NON_PREDICTABLE_STATES = frozenset(
     {
@@ -105,8 +108,14 @@ def generate_prediction_for_game(
     game: Game,
     *,
     model_version=None,
+    emit_alerts: bool = True,
 ) -> Prediction:
-    """Run inference for ``game`` and upsert a ``Prediction`` row."""
+    """Run inference for ``game`` and upsert a ``Prediction`` row.
+
+    When ``emit_alerts`` is true and a new prediction row is created, followers
+    receive a ``new_prediction`` notification (idempotent). Pass ``False`` for
+    lazy on-read generation so browsing a game detail does not spam alerts.
+    """
     active_model = model_version or get_active_pregame_model(db)
 
     existing = _load_prediction(
@@ -145,6 +154,17 @@ def generate_prediction_for_game(
     )
     if loaded is None:
         raise PredictionError(f"Failed to persist prediction for game {game.game_pk}")
+
+    if emit_alerts:
+        try:
+            from baseball_backend.services.alert_rules import evaluate_new_prediction_alert
+
+            evaluate_new_prediction_alert(db, game, loaded)
+        except Exception:
+            logger.exception(
+                "New-prediction alert failed for game_pk=%s", game.game_pk
+            )
+
     return loaded
 
 
@@ -153,7 +173,7 @@ def get_prediction_for_game_pk(db: Session, game_pk: int) -> Prediction | None:
     Return a stored prediction for ``game_pk``, generating one when missing.
 
     Returns ``None`` when no active pregame model is registered, the game is not
-    predictable, or inference cannot run.
+    predictable, or inference cannot run. Lazy generation does not emit alerts.
     """
     game = db.scalar(select(Game).where(Game.game_pk == game_pk))
     if game is None:
@@ -176,7 +196,9 @@ def get_prediction_for_game_pk(db: Session, game_pk: int) -> Prediction | None:
         return None
 
     try:
-        return generate_prediction_for_game(db, game, model_version=model_version)
+        return generate_prediction_for_game(
+            db, game, model_version=model_version, emit_alerts=False
+        )
     except PredictionError:
         return None
 

@@ -15,6 +15,7 @@ def test_all_tables_registered() -> None:
         "user_follows",
         "notification_preferences",
         "notifications",
+        "alert_dispatches",
     }
     assert expected == set(Base.metadata.tables.keys())
 
