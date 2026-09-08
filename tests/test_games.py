@@ -11,7 +11,15 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from baseball_backend.db.base import Base
-from baseball_backend.db.models import Game, ModelVersion, Player, Prediction, Team, User
+from baseball_backend.db.models import (
+    Game,
+    ModelVersion,
+    Player,
+    Prediction,
+    Team,
+    User,
+    UserFollow,
+)
 from baseball_backend.db.session import get_db
 from baseball_backend.main import app
 
@@ -61,6 +69,7 @@ def db_session() -> Generator[Session, None, None]:
         Game.__table__,
         ModelVersion.__table__,
         Prediction.__table__,
+        UserFollow.__table__,
     ]
     Base.metadata.create_all(bind=engine, tables=tables)
     session = sessionmaker(bind=engine, autocommit=False, autoflush=False)()

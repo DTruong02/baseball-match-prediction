@@ -26,15 +26,19 @@ function MatchupContent() {
   const homeTeamId = Number(searchParams.get("home"));
   const awayTeamId = Number(searchParams.get("away"));
   const seasonParam = Number(searchParams.get("season") || currentYear);
+  const matchupValid =
+    Number.isFinite(homeTeamId) && Number.isFinite(awayTeamId);
 
   const [data, setData] = useState<MatchupAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(matchupValid);
+  const [error, setError] = useState<string | null>(
+    matchupValid
+      ? null
+      : "Choose home and away teams from the Analytics hub.",
+  );
 
   useEffect(() => {
-    if (!Number.isFinite(homeTeamId) || !Number.isFinite(awayTeamId)) {
-      setError("Choose home and away teams from the Analytics hub.");
-      setLoading(false);
+    if (!matchupValid) {
       return;
     }
 
@@ -70,7 +74,7 @@ function MatchupContent() {
     return () => {
       cancelled = true;
     };
-  }, [homeTeamId, awayTeamId, seasonParam]);
+  }, [homeTeamId, awayTeamId, matchupValid, seasonParam]);
 
   return (
     <section className="space-y-6">

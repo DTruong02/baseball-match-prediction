@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=7.0", "ruff>=0.6"]
 chat = ["openai>=1.0"]
 backend = [
     "alembic>=1.13",
@@ -40,6 +40,14 @@ backend = [
 
 [tool.pytest.ini_options]
 pythonpath = ["backend"]
+
+[tool.ruff]
+target-version = "py39"
+src = ["src", "backend", "tests"]
+
+[tool.ruff.lint]
+# Critical correctness checks only (keeps CI green without a full style rewrite).
+select = ["E9", "F63", "F7", "F82"]
 
 [project.scripts]
 baseball-analyze = "baseball_analyze.cli:main"

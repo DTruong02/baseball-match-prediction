@@ -129,8 +129,6 @@ export function useLiveGame(gamePk: number | null) {
     failuresRef.current = 0;
     modeRef.current = "ws";
     lastEventsInsertedRef.current = 0;
-    setConnectionStatus("connecting");
-    void refreshEvents(gamePk);
 
     const connect = () => {
       const token = getStoredToken();
@@ -202,10 +200,15 @@ export function useLiveGame(gamePk: number | null) {
       };
     };
 
-    connect();
+    // Defer subscription boot so status/event updates are not sync setState in the effect.
+    const bootTimer = setTimeout(() => {
+      void refreshEvents(gamePk);
+      connect();
+    }, 0);
 
     return () => {
       intentionalCloseRef.current = true;
+      clearTimeout(bootTimer);
       clearReconnect();
       stopPolling();
       if (wsRef.current != null) {

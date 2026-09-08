@@ -31,18 +31,19 @@ function TeamAnalyticsContent() {
   const params = useParams<{ teamId: string }>();
   const searchParams = useSearchParams();
   const teamId = Number(params.teamId);
+  const teamIdValid = Number.isFinite(teamId);
   const currentYear = new Date().getFullYear();
   const initialSeason = Number(searchParams.get("season") || currentYear);
 
   const [season, setSeason] = useState(String(initialSeason));
   const [data, setData] = useState<TeamAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(teamIdValid);
+  const [error, setError] = useState<string | null>(
+    teamIdValid ? null : "Invalid team id.",
+  );
 
   useEffect(() => {
-    if (!Number.isFinite(teamId)) {
-      setError("Invalid team id.");
-      setLoading(false);
+    if (!teamIdValid) {
       return;
     }
 
@@ -78,7 +79,7 @@ function TeamAnalyticsContent() {
     return () => {
       cancelled = true;
     };
-  }, [teamId, season]);
+  }, [teamId, teamIdValid, season]);
 
   return (
     <section className="space-y-6">

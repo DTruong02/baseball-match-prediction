@@ -320,6 +320,39 @@ pip install -e ".[dev,backend]"
 pytest -q
 ```
 
+Python critical lint (also run in CI):
+
+```bash
+ruff check src backend tests
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm ci
+npm run lint
+npm run build
+```
+
+## CI / CD (GitHub Actions)
+
+Workflows live under `.github/workflows/`:
+
+| Workflow | When | What |
+|----------|------|------|
+| **CI** (`ci.yml`) | Push / PR to `main` | Ruff + pytest (ML + backend), ESLint + Next build, Docker image builds for api / worker / web |
+| **Deploy** (`deploy.yml`) | Manual (`workflow_dispatch`), or push to `main` when enabled | SSH to the Compose host, checkout the commit, `docker compose up --build -d`, run `alembic upgrade head`, wait for `/health` |
+
+Deploy is **opt-in** so everyday pushes stay green before a VM exists. To enable automatic deploys on `main`:
+
+1. Clone this repo on the host (e.g. `~/baseball-chatbot`) and create a production `.env` there.
+2. Add repository **secrets**: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (private key). Optional: `DEPLOY_PORT` (default `22`), `DEPLOY_PATH` (default `~/baseball-chatbot`).
+3. Set repository **variable** `ENABLE_DEPLOY` = `true`.
+4. Or run **Actions → Deploy → Run workflow** without enabling auto-deploy.
+
+The remote script is [`infra/deploy.sh`](infra/deploy.sh). The API container entrypoint also migrates on boot; the deploy job runs Alembic explicitly so schema updates apply even if the API image was already warm.
+
 ## Troubleshooting
 
 - **`RuntimeError: No training rows collected`** — Training never built a single feature row, so **`artifacts/` is not created.** A common cause was **invalid FanGraphs stat names** in older `pybaseball` versions; this repo uses **numeric FanGraphs stat ids** for team batting/pitching. If you still see this after pulling updates, delete `./cache/` and retry.

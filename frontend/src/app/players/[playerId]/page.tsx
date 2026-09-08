@@ -27,18 +27,19 @@ function PlayerAnalyticsContent() {
   const params = useParams<{ playerId: string }>();
   const searchParams = useSearchParams();
   const playerId = Number(params.playerId);
+  const playerIdValid = Number.isFinite(playerId);
   const currentYear = new Date().getFullYear();
   const initialSeason = Number(searchParams.get("season") || currentYear);
 
   const [season, setSeason] = useState(String(initialSeason));
   const [data, setData] = useState<PlayerAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(playerIdValid);
+  const [error, setError] = useState<string | null>(
+    playerIdValid ? null : "Invalid player id.",
+  );
 
   useEffect(() => {
-    if (!Number.isFinite(playerId)) {
-      setError("Invalid player id.");
-      setLoading(false);
+    if (!playerIdValid) {
       return;
     }
 
@@ -76,7 +77,7 @@ function PlayerAnalyticsContent() {
     return () => {
       cancelled = true;
     };
-  }, [playerId, season]);
+  }, [playerId, playerIdValid, season]);
 
   return (
     <section className="space-y-6">
