@@ -211,7 +211,7 @@ cd backend
 alembic upgrade head
 ```
 
-Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`, `REDIS_URL`, `REDIS_ENABLED`, `LIVE_CACHE_TTL_COMPLETED_SECONDS`, `LIVE_PUBSUB_ENABLED`, `LIVE_POLL_INTERVAL_SECONDS`, `LIVE_POLL_GAME_DELAY_SECONDS`, `LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS`, `LIVE_SYNC_RETRIES`, `LIVE_SYNC_BACKOFF_SECONDS`, `LIVE_STALE_AFTER_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS`, `NOTIFICATION_POLL_INTERVAL_SECONDS`.
+Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`, `REDIS_URL`, `REDIS_ENABLED`, `LIVE_CACHE_TTL_COMPLETED_SECONDS`, `LIVE_PUBSUB_ENABLED`, `LIVE_POLL_INTERVAL_SECONDS`, `LIVE_POLL_GAME_DELAY_SECONDS`, `LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS`, `LIVE_SYNC_RETRIES`, `LIVE_SYNC_BACKOFF_SECONDS`, `LIVE_STALE_AFTER_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS`, `NOTIFICATION_POLL_INTERVAL_SECONDS`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` (also `OPENAI_*` fallbacks used by the chat REPL).
 
 The live worker (`baseball-live-worker`) writes current game state to Redis and Postgres (`games.live_state`) after each poll. Completed games expire from the cache after `LIVE_CACHE_TTL_COMPLETED_SECONDS` (default 1 hour). When `LIVE_PUBSUB_ENABLED` is true, updates are published on `live:game:{game_pk}:updates` for API/WebSocket fan-out.
 
@@ -232,6 +232,14 @@ Configure SMTP (`SMTP_HOST`, `SMTP_FROM`, optional `SMTP_USER` / `SMTP_PASSWORD`
 - `GET /analytics/matchup?home_team_id=&away_team_id=&season=` — head-to-head games + FanGraphs diffs
 
 Frontend: `/analytics` hub, `/teams/[teamId]`, `/players/[playerId]`, `/analytics/matchup`.
+
+**AI assist (Stage 6.5):** authenticated grounded endpoints reuse the same tool-calling contract as `baseball-analyze chat` (`run_grounded_chat` in `chat_repl.py`). Probabilities and stats come only from stored predictions / chat tools — never invented by the LLM.
+
+- `POST /ai/explain` — `{ "game_pk" }` narrates the stored pregame lean from features + probs
+- `POST /ai/summarize-game` — `{ "game_pk" }` summarizes schedule, score, WP, and recent events
+- `POST /ai/ask` — `{ "question", "game_pk"?, "date"? }` full NL Q&A with schedule + `predict_games` tools
+
+Install the chat extra (`pip install -e ".[chat]"`) and set `LLM_API_KEY` / `OPENAI_API_KEY` (or `LLM_BASE_URL` for a local OpenAI-compatible server). Misconfiguration returns `503`. Game detail UI (`/games/[gamePk]`) exposes Explain / Summarize / Ask.
 
 **Live resilience:** play events are deduped by MLB `atBatIndex` (`play-{n}`) with DB uniqueness; MLB fetches retry with exponential backoff (and honor `Retry-After` on 429); polls are rate-limited between games; when Redis or the MLB feed is unavailable (or the snapshot is older than `LIVE_STALE_AFTER_SECONDS`), the API serves the last Postgres snapshot with `degraded=true` so the UI can show a “Live data degraded” banner.
 

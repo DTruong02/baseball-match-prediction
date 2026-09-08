@@ -330,3 +330,25 @@ export interface MatchupAnalytics {
     median_starter_fip: number | null;
   } | null;
 }
+
+export interface AiExplainResponse {
+  game_pk: number;
+  explanation: string;
+  home_win_proba: number | null;
+  away_win_proba: number | null;
+  features?: Record<string, number> | null;
+  notes?: string | null;
+  model_version: ModelVersionSummary;
+}
+
+export interface AiSummarizeResponse {
+  game_pk: number;
+  summary: string;
+}
+
+export interface AiAskResponse {
+  answer: string;
+  tool_trace: Record<string, unknown>[];
+  game_pk?: number | null;
+  date?: string | null;
+}

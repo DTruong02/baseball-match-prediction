@@ -4,6 +4,9 @@ import {
   setStoredToken,
 } from "@/lib/auth-storage";
 import type {
+  AiAskResponse,
+  AiExplainResponse,
+  AiSummarizeResponse,
   ApiErrorBody,
   Follow,
   Game,
@@ -330,6 +333,54 @@ export async function fetchMatchupAnalytics(
   return apiFetch<MatchupAnalytics>(
     `/analytics/matchup?${search.toString()}`,
     {},
+    true,
+  );
+}
+
+export async function explainGameLean(
+  gamePk: number,
+): Promise<AiExplainResponse> {
+  return apiFetch<AiExplainResponse>(
+    "/ai/explain",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ game_pk: gamePk }),
+    },
+    true,
+  );
+}
+
+export async function summarizeGame(
+  gamePk: number,
+): Promise<AiSummarizeResponse> {
+  return apiFetch<AiSummarizeResponse>(
+    "/ai/summarize-game",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ game_pk: gamePk }),
+    },
+    true,
+  );
+}
+
+export async function askAi(options: {
+  question: string;
+  gamePk?: number;
+  date?: string;
+}): Promise<AiAskResponse> {
+  return apiFetch<AiAskResponse>(
+    "/ai/ask",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: options.question,
+        game_pk: options.gamePk,
+        date: options.date,
+      }),
+    },
     true,
   );
 }

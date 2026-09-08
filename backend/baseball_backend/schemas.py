@@ -396,3 +396,45 @@ class MatchupAnalyticsRead(BaseModel):
     fangraphs_home: Optional[TeamFangraphsStats] = None
     fangraphs_away: Optional[TeamFangraphsStats] = None
     fangraphs_diff: Optional[FangraphsDiff] = None
+
+
+# --- Stage 6.5 grounded AI ---
+
+
+class AiExplainRequest(BaseModel):
+    game_pk: int = Field(..., ge=1)
+
+
+class AiExplainResponse(BaseModel):
+    game_pk: int
+    explanation: str
+    home_win_proba: Optional[float] = None
+    away_win_proba: Optional[float] = None
+    features: Optional[dict[str, float]] = None
+    notes: Optional[str] = None
+    model_version: ModelVersionSummary
+
+
+class AiSummarizeRequest(BaseModel):
+    game_pk: int = Field(..., ge=1)
+
+
+class AiSummarizeResponse(BaseModel):
+    game_pk: int
+    summary: str
+
+
+class AiAskRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=4000)
+    game_pk: Optional[int] = Field(default=None, ge=1)
+    date: Optional[str] = Field(
+        default=None,
+        description="Optional YYYY-MM-DD hint for schedule tools",
+    )
+
+
+class AiAskResponse(BaseModel):
+    answer: str
+    tool_trace: list[dict[str, Any]] = Field(default_factory=list)
+    game_pk: Optional[int] = None
+    date: Optional[str] = None

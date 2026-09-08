@@ -6,6 +6,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from baseball_backend.routes.ai import router as ai_router
 from baseball_backend.routes.analytics import router as analytics_router
 from baseball_backend.routes.auth import router as auth_router
 from baseball_backend.routes.follows import router as follows_router
@@ -46,6 +47,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(ai_router)
 app.include_router(analytics_router)
 app.include_router(auth_router)
 app.include_router(follows_router)

@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     smtp_from: str = ""
     smtp_use_tls: bool = True
     notification_poll_interval_seconds: float = 30.0
+    # LLM / grounded AI (Stage 6.5). Also accepts OPENAI_* via chat_repl env fallback.
+    llm_api_key: str = ""
+    llm_base_url: str = ""
+    llm_model: str = ""
 
 
 @lru_cache
