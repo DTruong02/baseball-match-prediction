@@ -15,13 +15,35 @@ from baseball_backend.worker_status import heartbeat_lag_seconds
 
 def test_health_returns_ok() -> None:
     client = TestClient(app)
-    response = client.get("/health")
+    with (
+        patch("baseball_backend.routes.health.ping_redis", return_value=True),
+        patch(
+            "baseball_backend.routes.health.get_live_feed_health",
+            return_value={"ok": True},
+        ),
+    ):
+        response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
     assert body["database_configured"] is True
+    assert body["live_degraded"] is False
     assert body["ml_package_version"] is not None
     assert "x-request-id" in response.headers
+
+
+def test_health_live_degraded_when_feed_unhealthy() -> None:
+    client = TestClient(app)
+    with (
+        patch("baseball_backend.routes.health.ping_redis", return_value=True),
+        patch(
+            "baseball_backend.routes.health.get_live_feed_health",
+            return_value={"ok": False, "error": "MLB timeout"},
+        ),
+    ):
+        response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["live_degraded"] is True
 
 
 def test_ready_ok_when_dependencies_healthy() -> None:

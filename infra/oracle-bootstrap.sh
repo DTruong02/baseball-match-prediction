@@ -6,6 +6,8 @@ set -euo pipefail
 REPO_URL="${REPO_URL:-}"
 DEPLOY_PATH="${DEPLOY_PATH:-$HOME/baseball-chatbot}"
 INSTALL_DOCKER="${INSTALL_DOCKER:-1}"
+HARDEN_HOST="${HARDEN_HOST:-1}"
+INSTALL_BACKUP_CRON="${INSTALL_BACKUP_CRON:-1}"
 
 echo "==> Oracle Always Free bootstrap"
 
@@ -73,11 +75,33 @@ if [[ -n "${REPO_URL}" ]]; then
 fi
 
 if [[ -d "${DEPLOY_PATH}" ]]; then
+  if [[ "${HARDEN_HOST}" == "1" && -f "${DEPLOY_PATH}/infra/host-harden.sh" ]]; then
+    echo "==> Applying host firewall + unattended security updates"
+    chmod +x "${DEPLOY_PATH}/infra/host-harden.sh"
+    sudo "${DEPLOY_PATH}/infra/host-harden.sh" || {
+      echo "WARN: host-harden.sh failed; see infra/HOSTING.md and infra/RUNBOOK.md" >&2
+    }
+  fi
+
+  if [[ "${INSTALL_BACKUP_CRON}" == "1" && -f "${DEPLOY_PATH}/infra/backup-postgres.sh" ]]; then
+    echo "==> Ensuring Postgres backup cron (daily 04:15 UTC)"
+    chmod +x "${DEPLOY_PATH}/infra/backup-postgres.sh"
+    mkdir -p "${HOME}/backups/postgres"
+    cron_line="15 4 * * * DEPLOY_PATH=${DEPLOY_PATH} ${DEPLOY_PATH}/infra/backup-postgres.sh >>${HOME}/backups/postgres/cron.log 2>&1"
+    if crontab -l 2>/dev/null | grep -F "infra/backup-postgres.sh" >/dev/null; then
+      echo "    Backup cron already present"
+    else
+      (crontab -l 2>/dev/null; echo "${cron_line}") | crontab -
+      echo "    Installed: ${cron_line}"
+    fi
+  fi
+
   echo "==> Next steps in ${DEPLOY_PATH}:"
   echo "    1. cp .env.example .env && edit secrets (see infra/HOSTING.md)"
   echo "    2. Set COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml in .env"
   echo "    3. docker compose up -d --build"
-  echo "    4. Open OCI Security List + host firewall for 22/80/443"
+  echo "    4. Confirm OCI Security List allows 22/80/443 (host firewall applied if HARDEN_HOST=1)"
+  echo "    5. Ops runbook: infra/RUNBOOK.md (degraded live, restore, SMTP, rollback)"
 else
   echo "==> Clone the repo (REPO_URL=... $0) or copy it to ${DEPLOY_PATH}, then see infra/HOSTING.md"
 fi

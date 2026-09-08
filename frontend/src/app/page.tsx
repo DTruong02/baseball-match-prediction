@@ -5,8 +5,15 @@ import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { GameCard } from "@/components/GameCard";
+import { LiveDegradedBanner } from "@/components/LiveDegradedBanner";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { ApiError, fetchFollows, fetchGames, fetchPrediction } from "@/lib/api";
+import {
+  ApiError,
+  fetchFollows,
+  fetchGames,
+  fetchHealth,
+  fetchPrediction,
+} from "@/lib/api";
 import type { Game, Prediction } from "@/lib/types";
 
 function todayIsoDate(): string {
@@ -23,6 +30,7 @@ export default function DashboardPage() {
   >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [liveDegraded, setLiveDegraded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +51,33 @@ export default function DashboardPage() {
     void loadFollows();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLiveHealth() {
+      try {
+        const health = await fetchHealth();
+        if (!cancelled) {
+          setLiveDegraded(Boolean(health.live_degraded));
+        }
+      } catch {
+        if (!cancelled) {
+          setLiveDegraded(false);
+        }
+      }
+    }
+
+    void loadLiveHealth();
+    const timer = window.setInterval(() => {
+      void loadLiveHealth();
+    }, 30_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -143,6 +178,8 @@ export default function DashboardPage() {
               ) : null}
             </div>
           </div>
+
+          <LiveDegradedBanner show={liveDegraded} />
 
           {loading ? (
             <p className="text-sm text-muted">Loading games…</p>

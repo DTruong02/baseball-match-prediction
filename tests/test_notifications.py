@@ -206,6 +206,46 @@ def test_deliver_pending_emails_sends_and_marks(
     assert row.delivered_at is not None
 
 
+def test_deliver_pending_emails_retries_transient_smtp_errors(
+    client: TestClient, db_session: Session
+) -> None:
+    headers = _auth_headers(client)
+    client.put(
+        "/notifications/preferences",
+        headers=headers,
+        json={"email_enabled": True, "in_app_enabled": False},
+    )
+    user = db_session.query(User).one()
+    enqueue_notification(
+        db_session,
+        user_id=user.id,
+        alert_type=NotificationAlertType.GAME_FINAL.value,
+        title="Final",
+        body="Yankees win 5-3",
+    )
+    settings = Settings(
+        smtp_host="smtp.example.com",
+        smtp_port=587,
+        smtp_from="alerts@example.com",
+        smtp_use_tls=True,
+        notification_email_retries=2,
+        notification_email_backoff_seconds=0.01,
+    )
+    with (
+        patch(
+            "baseball_backend.services.notification_delivery.send_email",
+            side_effect=[RuntimeError("smtp blip"), None],
+        ) as mock_send,
+        patch("baseball_backend.services.notification_delivery.time.sleep") as mock_sleep,
+    ):
+        summary = deliver_pending_emails(db_session, settings=settings)
+    assert summary == {"processed": 1, "delivered": 1, "failed": 0}
+    assert mock_send.call_count == 2
+    mock_sleep.assert_called_once()
+    row = db_session.query(Notification).one()
+    assert row.status == NotificationDeliveryStatus.DELIVERED.value
+
+
 def test_deliver_pending_emails_marks_failed_without_smtp(
     client: TestClient, db_session: Session
 ) -> None:

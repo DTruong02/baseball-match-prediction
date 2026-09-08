@@ -278,7 +278,9 @@ Frontend: `/analytics` hub, `/teams/[teamId]`, `/players/[playerId]`, `/analytic
 
 Install the chat extra (`pip install -e ".[chat]"`) and set `LLM_API_KEY` / `OPENAI_API_KEY` (or `LLM_BASE_URL` for a local OpenAI-compatible server). Misconfiguration returns `503`. Game detail UI (`/games/[gamePk]`) exposes Explain / Summarize / Ask.
 
-**Live resilience:** play events are deduped by MLB `atBatIndex` (`play-{n}`) with DB uniqueness; MLB fetches retry with exponential backoff (and honor `Retry-After` on 429); polls are rate-limited between games; when Redis or the MLB feed is unavailable (or the snapshot is older than `LIVE_STALE_AFTER_SECONDS`), the API serves the last Postgres snapshot with `degraded=true` so the UI can show a “Live data degraded” banner.
+**Live resilience:** play events are deduped by MLB `atBatIndex` (`play-{n}`) with DB uniqueness; MLB fetches retry with exponential backoff (and honor `Retry-After` on 429); all MLB Stats API calls share a process-wide min interval (`MLB_MIN_REQUEST_INTERVAL_SECONDS`) and live polls add another spacer; when Redis or the MLB feed is unavailable (or the snapshot is older than `LIVE_STALE_AFTER_SECONDS`), the API serves the last Postgres snapshot with `degraded=true` / `/health.live_degraded` so the UI shows a “Live data degraded” banner on the home slate and game page.
+
+**Ops (Stage 7.5):** see [`infra/RUNBOOK.md`](infra/RUNBOOK.md) for degraded feed, worker lag, MLB 429, SMTP, Postgres restore, and deploy rollback. VM bootstrap applies host firewall + unattended updates (`infra/host-harden.sh`) and installs daily `infra/backup-postgres.sh` cron.
 
 **Live WebSockets** (authenticated via `?token=` JWT query param):
 

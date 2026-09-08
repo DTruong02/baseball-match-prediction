@@ -4,9 +4,22 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from baseball_analyze.data.mlb_client import MLBAPIError, _get, _parse_game, fetch_live_feed
+from baseball_analyze.data.mlb_client import (
+    MLBAPIError,
+    _get,
+    _parse_game,
+    _reset_outbound_rate_limiter_for_tests,
+    fetch_live_feed,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "schedule_game.json"
+
+
+@pytest.fixture(autouse=True)
+def _disable_outbound_rate_limit() -> None:
+    _reset_outbound_rate_limiter_for_tests(0.0)
+    yield
+    _reset_outbound_rate_limiter_for_tests(0.0)
 
 
 def test_parse_schedule_game_fixture() -> None:
@@ -116,3 +129,24 @@ def test_get_does_not_retry_client_errors() -> None:
 
     mock_sleep.assert_not_called()
     assert client.get.call_count == 1
+
+
+def test_get_enforces_outbound_rate_limit() -> None:
+    _reset_outbound_rate_limiter_for_tests(0.05)
+    response_ok = MagicMock()
+    response_ok.status_code = 200
+    response_ok.json.return_value = {"ok": True}
+    response_ok.headers = {}
+
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.get.return_value = response_ok
+
+    with patch("baseball_analyze.data.mlb_client.httpx.Client", return_value=client):
+        started = __import__("time").monotonic()
+        _get("/teams", retries=0)
+        _get("/teams", retries=0)
+        elapsed = __import__("time").monotonic() - started
+
+    assert elapsed >= 0.045

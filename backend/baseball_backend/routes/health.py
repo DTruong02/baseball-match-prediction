@@ -48,6 +48,16 @@ def _check_database() -> tuple[bool, str | None]:
         return False, str(exc)
 
 
+def _live_data_degraded(*, redis_configured: bool, redis_ok: bool | None) -> bool:
+    """Whether clients should show the live-data-degraded banner."""
+    if redis_configured and redis_ok is False:
+        return True
+    feed_health = get_live_feed_health()
+    if feed_health is not None and feed_health.get("ok") is False:
+        return True
+    return False
+
+
 @router.get("/health")
 def health() -> dict[str, object]:
     """Liveness probe — process is up; does not require DB/Redis."""
@@ -59,6 +69,9 @@ def health() -> dict[str, object]:
         "database_configured": bool(settings.database_url),
         "redis_configured": redis_configured,
         "redis_ok": redis_ok,
+        "live_degraded": _live_data_degraded(
+            redis_configured=redis_configured, redis_ok=redis_ok
+        ),
         "ml_package_version": _ml_package_version(),
     }
 

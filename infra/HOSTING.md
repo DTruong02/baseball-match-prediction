@@ -109,9 +109,18 @@ Open `https://$DOMAIN`, `https://$DOMAIN/api/health`, and `https://$DOMAIN/api/r
 
 Register a trained model into the VM’s `artifacts/` mount and activate it (same commands as local; see root README).
 
-## 5. Host firewall
+## 5. Host firewall and security updates
 
-OCI Security Lists alone are not always enough — Oracle Linux often has `firewalld`:
+Prefer the idempotent hardener (also run from bootstrap when `HARDEN_HOST=1`):
+
+```bash
+sudo ./infra/host-harden.sh
+```
+
+That opens only SSH / HTTP / HTTPS and enables unattended security updates
+(`unattended-upgrades` on Ubuntu, `dnf-automatic` on Oracle Linux).
+
+Manual equivalents — OCI Security Lists alone are not always enough; Oracle Linux often has `firewalld`:
 
 ```bash
 sudo firewall-cmd --permanent --add-service=http
@@ -129,6 +138,23 @@ sudo ufw enable
 ```
 
 Do **not** open 5432, 6379, 8000, or 3000 publicly. The prod Compose file keeps those services off the host publish list.
+
+## 6. Postgres backups
+
+[`backup-postgres.sh`](backup-postgres.sh) dumps the Compose `db` service to
+`~/backups/postgres/baseball_*.sql.gz` and prunes files older than
+`RETENTION_DAYS` (default 14). Bootstrap installs a daily cron at 04:15 UTC when
+`INSTALL_BACKUP_CRON=1`.
+
+```bash
+./infra/backup-postgres.sh
+# Restore steps: infra/RUNBOOK.md → Postgres restore
+```
+
+## Operational runbooks
+
+Failure recovery (degraded live feed, worker lag, MLB 429, SMTP, restore, rollback):
+see **[RUNBOOK.md](RUNBOOK.md)**.
 
 ## Optional: Cloudflare Tunnel
 
@@ -155,6 +181,8 @@ After the VM is up and `~/baseball-chatbot` has a production `.env` with `COMPOS
 - [ ] Login / today’s schedule loads in the browser
 - [ ] Live game page connects (WS or polling fallback)
 - [ ] OCI + host firewall: only 22/80/443 from the public internet
+- [ ] `~/backups/postgres` has a recent `baseball_*.sql.gz` (or cron installed)
+- [ ] Unattended security updates enabled (`unattended-upgrades` or `dnf-automatic`)
 
 ## Observability (Stage 7.4)
 

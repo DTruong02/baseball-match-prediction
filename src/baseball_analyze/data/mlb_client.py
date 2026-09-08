@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
+import threading
 import time
 from typing import Any, Dict, Iterator, Optional, Tuple
 
@@ -10,9 +12,60 @@ import httpx
 
 BASE = "https://statsapi.mlb.com/api/v1"
 
+# Global spacing for all outbound MLB Stats API calls (schedule sync, live,
+# training features). Override with MLB_MIN_REQUEST_INTERVAL_SECONDS.
+_DEFAULT_MIN_REQUEST_INTERVAL_S = 0.25
+
 
 class MLBAPIError(RuntimeError):
     pass
+
+
+class _OutboundRateLimiter:
+    """Thread-safe minimum spacing between MLB HTTP requests."""
+
+    def __init__(self, min_interval_seconds: float) -> None:
+        self._min_interval = max(0.0, float(min_interval_seconds))
+        self._lock = threading.Lock()
+        self._last_request_at = 0.0
+
+    def wait(self) -> None:
+        if self._min_interval <= 0:
+            return
+        with self._lock:
+            now = time.monotonic()
+            earliest = self._last_request_at + self._min_interval
+            delay = earliest - now
+            if delay > 0:
+                time.sleep(delay)
+                now = time.monotonic()
+            self._last_request_at = now
+
+
+def _configured_min_request_interval() -> float:
+    raw = os.environ.get("MLB_MIN_REQUEST_INTERVAL_SECONDS")
+    if raw is None or raw.strip() == "":
+        return _DEFAULT_MIN_REQUEST_INTERVAL_S
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return _DEFAULT_MIN_REQUEST_INTERVAL_S
+
+
+_outbound_limiter = _OutboundRateLimiter(_configured_min_request_interval())
+
+
+def _reset_outbound_rate_limiter_for_tests(
+    min_interval_seconds: float | None = None,
+) -> None:
+    """Reset the process-wide limiter (tests only)."""
+    global _outbound_limiter
+    interval = (
+        _configured_min_request_interval()
+        if min_interval_seconds is None
+        else max(0.0, float(min_interval_seconds))
+    )
+    _outbound_limiter = _OutboundRateLimiter(interval)
 
 
 _team_id_to_abbrev: Optional[Dict[int, str]] = None
@@ -50,12 +103,15 @@ def _get(
     """
     GET JSON from MLB Stats API with a hard timeout and simple retries.
 
-    Retries transient transport errors and HTTP 429/5xx. Honors Retry-After on
-    429 when provided. Non-retryable 4xx responses fail immediately.
+    All callers share a process-wide minimum request interval (see
+    MLB_MIN_REQUEST_INTERVAL_SECONDS). Retries transient transport errors and
+    HTTP 429/5xx. Honors Retry-After on 429 when provided. Non-retryable 4xx
+    responses fail immediately.
     """
     last_exc: Optional[Exception] = None
     for attempt in range(retries + 1):
         try:
+            _outbound_limiter.wait()
             with httpx.Client(timeout=timeout_s) as client:
                 r = client.get(f"{BASE}{path}", params=params)
                 if r.status_code == 200:

@@ -27,12 +27,25 @@ import type {
   User,
 } from "@/lib/types";
 
+export type HealthStatus = {
+  status: string;
+  database_configured: boolean;
+  redis_configured: boolean;
+  redis_ok: boolean | null;
+  live_degraded: boolean;
+  ml_package_version: string | null;
+};
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
   "http://localhost:8000";
 
 export function getApiBaseUrl(): string {
   return API_BASE;
+}
+
+export async function fetchHealth(): Promise<HealthStatus> {
+  return apiFetch<HealthStatus>("/health", {}, false);
 }
 
 export function liveGameWebSocketUrl(gamePk: number, token: string): string {

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { EventTimeline } from "@/components/EventTimeline";
 import { LiveConnectionBadge } from "@/components/LiveConnectionBadge";
+import { LiveDegradedBanner } from "@/components/LiveDegradedBanner";
 import { LiveScoreboard } from "@/components/LiveScoreboard";
 import { PredictionDisplay } from "@/components/PredictionDisplay";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -141,6 +142,7 @@ export default function GameDetailPage() {
                     degraded={degraded}
                   />
                 </div>
+                <LiveDegradedBanner show={degraded} />
                 <h1 className="text-2xl font-semibold tracking-tight">
                   {teamLabel(game.away_team)} at {teamLabel(game.home_team)}
                 </h1>
