@@ -12,6 +12,9 @@ def test_all_tables_registered() -> None:
         "game_events",
         "predictions",
         "model_versions",
+        "user_follows",
+        "notification_preferences",
+        "notifications",
     }
     assert expected == set(Base.metadata.tables.keys())
 

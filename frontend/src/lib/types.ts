@@ -169,3 +169,33 @@ export interface LiveWsMessage {
   source: "redis" | "postgres" | null;
   degraded: boolean;
 }
+
+export interface NotificationPreference {
+  in_app_enabled: boolean;
+  email_enabled: boolean;
+  notify_game_start: boolean;
+  notify_wp_threshold: boolean;
+  notify_high_leverage: boolean;
+  notify_game_final: boolean;
+  notify_new_prediction: boolean;
+  wp_threshold_pct: number;
+}
+
+export type NotificationPreferenceUpdate = Partial<NotificationPreference>;
+
+export interface NotificationItem {
+  id: number;
+  channel: string;
+  alert_type: string;
+  title: string;
+  body: string;
+  payload?: Record<string, unknown> | null;
+  status: string;
+  read_at: string | null;
+  delivered_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationUnreadCount {
+  count: number;
+}

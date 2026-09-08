@@ -11,6 +11,10 @@ import type {
   LiveSnapshot,
   ModelPerformance,
   ModelPerformanceParams,
+  NotificationItem,
+  NotificationPreference,
+  NotificationPreferenceUpdate,
+  NotificationUnreadCount,
   Prediction,
   Team,
   TokenResponse,
@@ -171,6 +175,69 @@ export async function followPlayer(playerId: number): Promise<Follow> {
 
 export async function unfollow(followId: number): Promise<void> {
   return apiFetch<void>(`/follows/${followId}`, { method: "DELETE" }, true);
+}
+
+export async function fetchNotificationPreferences(): Promise<NotificationPreference> {
+  return apiFetch<NotificationPreference>(
+    "/notifications/preferences",
+    {},
+    true,
+  );
+}
+
+export async function updateNotificationPreferences(
+  body: NotificationPreferenceUpdate,
+): Promise<NotificationPreference> {
+  return apiFetch<NotificationPreference>(
+    "/notifications/preferences",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    true,
+  );
+}
+
+export async function fetchNotifications(
+  options: { unreadOnly?: boolean; limit?: number } = {},
+): Promise<NotificationItem[]> {
+  const search = new URLSearchParams();
+  if (options.unreadOnly) {
+    search.set("unread_only", "true");
+  }
+  if (options.limit != null) {
+    search.set("limit", String(options.limit));
+  }
+  const query = search.toString();
+  const path = query ? `/notifications?${query}` : "/notifications";
+  return apiFetch<NotificationItem[]>(path, {}, true);
+}
+
+export async function fetchNotificationUnreadCount(): Promise<NotificationUnreadCount> {
+  return apiFetch<NotificationUnreadCount>(
+    "/notifications/unread-count",
+    {},
+    true,
+  );
+}
+
+export async function markNotificationRead(
+  notificationId: number,
+): Promise<NotificationItem> {
+  return apiFetch<NotificationItem>(
+    `/notifications/${notificationId}/read`,
+    { method: "POST" },
+    true,
+  );
+}
+
+export async function markAllNotificationsRead(): Promise<NotificationUnreadCount> {
+  return apiFetch<NotificationUnreadCount>(
+    "/notifications/read-all",
+    { method: "POST" },
+    true,
+  );
 }
 
 export async function fetchGame(gamePk: number): Promise<Game> {

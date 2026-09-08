@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     redis_connect_timeout_seconds: float = 2.0
     live_cache_ttl_completed_seconds: int = 3600
     live_pubsub_enabled: bool = True
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_tls: bool = True
+    notification_poll_interval_seconds: float = 30.0
 
 
 @lru_cache

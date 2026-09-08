@@ -196,3 +196,46 @@ class ModelPerformanceRead(BaseModel):
     log_loss: Optional[float] = None
     brier: Optional[float] = None
     calibration_buckets: list[CalibrationBucket] = Field(default_factory=list)
+
+
+class NotificationPreferenceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    in_app_enabled: bool
+    email_enabled: bool
+    notify_game_start: bool
+    notify_wp_threshold: bool
+    notify_high_leverage: bool
+    notify_game_final: bool
+    notify_new_prediction: bool
+    wp_threshold_pct: float
+
+
+class NotificationPreferenceUpdate(BaseModel):
+    in_app_enabled: Optional[bool] = None
+    email_enabled: Optional[bool] = None
+    notify_game_start: Optional[bool] = None
+    notify_wp_threshold: Optional[bool] = None
+    notify_high_leverage: Optional[bool] = None
+    notify_game_final: Optional[bool] = None
+    notify_new_prediction: Optional[bool] = None
+    wp_threshold_pct: Optional[float] = Field(default=None, ge=0.01, le=0.99)
+
+
+class NotificationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    channel: str
+    alert_type: str
+    title: str
+    body: str
+    payload: Optional[dict[str, Any]] = None
+    status: str
+    read_at: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class NotificationUnreadCount(BaseModel):
+    count: int

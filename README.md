@@ -211,9 +211,19 @@ cd backend
 alembic upgrade head
 ```
 
-Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`, `REDIS_URL`, `REDIS_ENABLED`, `LIVE_CACHE_TTL_COMPLETED_SECONDS`, `LIVE_PUBSUB_ENABLED`, `LIVE_POLL_INTERVAL_SECONDS`, `LIVE_POLL_GAME_DELAY_SECONDS`, `LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS`, `LIVE_SYNC_RETRIES`, `LIVE_SYNC_BACKOFF_SECONDS`, `LIVE_STALE_AFTER_SECONDS`.
+Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`, `REDIS_URL`, `REDIS_ENABLED`, `LIVE_CACHE_TTL_COMPLETED_SECONDS`, `LIVE_PUBSUB_ENABLED`, `LIVE_POLL_INTERVAL_SECONDS`, `LIVE_POLL_GAME_DELAY_SECONDS`, `LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS`, `LIVE_SYNC_RETRIES`, `LIVE_SYNC_BACKOFF_SECONDS`, `LIVE_STALE_AFTER_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS`, `NOTIFICATION_POLL_INTERVAL_SECONDS`.
 
 The live worker (`baseball-live-worker`) writes current game state to Redis and Postgres (`games.live_state`) after each poll. Completed games expire from the cache after `LIVE_CACHE_TTL_COMPLETED_SECONDS` (default 1 hour). When `LIVE_PUBSUB_ENABLED` is true, updates are published on `live:game:{game_pk}:updates` for API/WebSocket fan-out.
+
+**Notifications (Stage 6):** preferences and in-app inbox live under `/notifications`. Enqueue via `notification_service.enqueue_notification` (used by alert rules in Stage 6.3): creates an immediate in-app row when enabled, and a pending email row when email is enabled. Deliver email with:
+
+```bash
+baseball-notification-worker --once
+# or continuous:
+baseball-notification-worker
+```
+
+Configure SMTP (`SMTP_HOST`, `SMTP_FROM`, optional `SMTP_USER` / `SMTP_PASSWORD`) before enabling email delivery.
 
 **Live resilience:** play events are deduped by MLB `atBatIndex` (`play-{n}`) with DB uniqueness; MLB fetches retry with exponential backoff (and honor `Retry-After` on 429); polls are rate-limited between games; when Redis or the MLB feed is unavailable (or the snapshot is older than `LIVE_STALE_AFTER_SECONDS`), the API serves the last Postgres snapshot with `degraded=true` so the UI can show a “Live data degraded” banner.
 
@@ -265,7 +275,7 @@ Open `http://localhost:3000`. The dev server expects the API at `http://localhos
 - `/` — schedule dashboard with date picker
 - `/games/[gamePk]` — game detail with live scoreboard (live WP + rule-based swing notes when WP moves ≥5pp), play-by-play timeline, WebSocket updates (falls back to HTTP polling), and pregame prediction
 - `/model` — model performance
-- `/profile` — account shell
+- `/profile` — account, watchlist, notification preferences, and in-app inbox
 
 ## Tests
 

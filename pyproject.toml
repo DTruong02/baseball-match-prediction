@@ -51,6 +51,7 @@ baseball-register-model = "baseball_backend.register_model:main"
 baseball-predict-games = "baseball_backend.predict_games:main"
 baseball-score-predictions = "baseball_backend.score_predictions:main"
 baseball-live-worker = "baseball_backend.live_worker:main"
+baseball-notification-worker = "baseball_backend.notification_worker:main"
 
 [tool.setuptools.packages.find]
 where = ["src", "backend"]

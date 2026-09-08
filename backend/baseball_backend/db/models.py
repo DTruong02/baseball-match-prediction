@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any, Optional
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     JSON,
     Date,
@@ -41,6 +42,25 @@ class FollowEntityType(str, Enum):
     PLAYER = "player"
 
 
+class NotificationChannel(str, Enum):
+    IN_APP = "in_app"
+    EMAIL = "email"
+
+
+class NotificationDeliveryStatus(str, Enum):
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+
+
+class NotificationAlertType(str, Enum):
+    GAME_START = "game_start"
+    WP_THRESHOLD = "wp_threshold"
+    HIGH_LEVERAGE = "high_leverage"
+    GAME_FINAL = "game_final"
+    NEW_PREDICTION = "new_prediction"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -58,6 +78,15 @@ class User(Base):
     )
 
     follows: Mapped[list["UserFollow"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    notification_preference: Mapped[Optional["NotificationPreference"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    notifications: Mapped[list["Notification"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
@@ -150,6 +179,80 @@ class UserFollow(Base):
     user: Mapped[User] = relationship(back_populates="follows")
     team: Mapped[Optional[Team]] = relationship(back_populates="follows")
     player: Mapped[Optional[Player]] = relationship(back_populates="follows")
+
+
+class NotificationPreference(Base):
+    """Per-user channel and alert-type toggles for notification delivery."""
+
+    __tablename__ = "notification_preferences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    in_app_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    email_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notify_game_start: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notify_wp_threshold: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notify_high_leverage: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    notify_game_final: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notify_new_prediction: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    wp_threshold_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.15)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user: Mapped[User] = relationship(back_populates="notification_preference")
+
+
+class Notification(Base):
+    """In-app or email notification queued for (or already shown to) a user."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index("ix_notifications_user_id_created_at", "user_id", "created_at"),
+        Index("ix_notifications_channel_status", "channel", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    alert_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=NotificationDeliveryStatus.PENDING.value,
+    )
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    read_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped[User] = relationship(back_populates="notifications")
 
 
 class Game(Base):
