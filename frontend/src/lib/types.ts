@@ -199,3 +199,134 @@ export interface NotificationItem {
 export interface NotificationUnreadCount {
   count: number;
 }
+
+export interface TeamFangraphsStats {
+  fangraphs_team: string;
+  wrc_plus: number | null;
+  team_fip: number | null;
+  bullpen_fip: number | null;
+  median_starter_fip: number | null;
+}
+
+export interface PitcherFangraphsStats {
+  fangraphs_name: string;
+  fangraphs_team: string | null;
+  fip: number | null;
+  era: number | null;
+  ip: number | null;
+  gs: number | null;
+  k_per_9: number | null;
+  bb_per_9: number | null;
+}
+
+export interface MonthlyTrendRow {
+  month: string;
+  games: number;
+  wins: number;
+  losses: number;
+  runs_scored: number;
+  runs_allowed: number;
+  run_diff: number;
+}
+
+export interface TeamAnalytics {
+  team: Team;
+  season: number;
+  record: {
+    games: number;
+    wins: number;
+    losses: number;
+    runs_scored: number;
+    runs_allowed: number;
+    run_diff: number;
+  };
+  splits: {
+    home: { games: number; wins: number; losses: number };
+    away: { games: number; wins: number; losses: number };
+  };
+  monthly_trend: MonthlyTrendRow[];
+  prediction_accuracy: {
+    n_predictions: number;
+    n_correct: number;
+    accuracy: number | null;
+    model_version_id?: number | null;
+    run_id?: string | null;
+  };
+  fangraphs: TeamFangraphsStats | null;
+  recent_games: {
+    game_pk: number;
+    game_date: string;
+    opponent_abbreviation: string;
+    opponent_name: string;
+    is_home: boolean;
+    runs_scored: number;
+    runs_allowed: number;
+    result: string;
+  }[];
+}
+
+export interface PlayerDetail {
+  id: number;
+  full_name: string;
+  primary_position: string | null;
+  team: Team | null;
+}
+
+export interface PlayerAnalytics {
+  player: PlayerDetail;
+  season: number;
+  probable_starts: {
+    games: number;
+    wins: number;
+    losses: number;
+    win_pct: number | null;
+    games_detail: {
+      game_pk: number;
+      game_date: string;
+      is_home: boolean;
+      opponent_abbreviation: string;
+      opponent_name: string;
+      team_score: number | null;
+      opponent_score: number | null;
+      result: string | null;
+      detailed_state: string;
+    }[];
+  };
+  event_splits: {
+    scoring_plays_as_batter: number;
+    scoring_plays_as_pitcher: number;
+    rbi: number;
+    events_scanned: number;
+  };
+  fangraphs: PitcherFangraphsStats | null;
+}
+
+export interface MatchupAnalytics {
+  season: number;
+  home_team: Team;
+  away_team: Team;
+  head_to_head: {
+    meetings: number;
+    scored_games: number;
+    home_wins: number;
+    away_wins: number;
+    games: {
+      game_pk: number;
+      game_date: string;
+      venue_home_abbreviation: string;
+      venue_away_abbreviation: string;
+      home_score: number | null;
+      away_score: number | null;
+      detailed_state: string;
+      winner: string | null;
+    }[];
+  };
+  fangraphs_home: TeamFangraphsStats | null;
+  fangraphs_away: TeamFangraphsStats | null;
+  fangraphs_diff: {
+    wrc_plus: number | null;
+    team_fip: number | null;
+    bullpen_fip: number | null;
+    median_starter_fip: number | null;
+  } | null;
+}

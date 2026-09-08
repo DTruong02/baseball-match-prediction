@@ -9,14 +9,17 @@ import type {
   Game,
   GameEvent,
   LiveSnapshot,
+  MatchupAnalytics,
   ModelPerformance,
   ModelPerformanceParams,
   NotificationItem,
   NotificationPreference,
   NotificationPreferenceUpdate,
   NotificationUnreadCount,
+  PlayerAnalytics,
   Prediction,
   Team,
+  TeamAnalytics,
   TokenResponse,
   User,
 } from "@/lib/types";
@@ -290,6 +293,45 @@ export async function fetchModelPerformance(
   const query = search.toString();
   const path = query ? `/model/performance?${query}` : "/model/performance";
   return apiFetch<ModelPerformance>(path, {}, true);
+}
+
+export async function fetchTeamAnalytics(
+  teamId: number,
+  season: number,
+): Promise<TeamAnalytics> {
+  return apiFetch<TeamAnalytics>(
+    `/teams/${teamId}/analytics?season=${season}`,
+    {},
+    true,
+  );
+}
+
+export async function fetchPlayerAnalytics(
+  playerId: number,
+  season: number,
+): Promise<PlayerAnalytics> {
+  return apiFetch<PlayerAnalytics>(
+    `/players/${playerId}/analytics?season=${season}`,
+    {},
+    true,
+  );
+}
+
+export async function fetchMatchupAnalytics(
+  homeTeamId: number,
+  awayTeamId: number,
+  season: number,
+): Promise<MatchupAnalytics> {
+  const search = new URLSearchParams({
+    home_team_id: String(homeTeamId),
+    away_team_id: String(awayTeamId),
+    season: String(season),
+  });
+  return apiFetch<MatchupAnalytics>(
+    `/analytics/matchup?${search.toString()}`,
+    {},
+    true,
+  );
 }
 
 export function logout(): void {

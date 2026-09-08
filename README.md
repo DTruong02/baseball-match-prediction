@@ -225,6 +225,14 @@ baseball-notification-worker
 
 Configure SMTP (`SMTP_HOST`, `SMTP_FROM`, optional `SMTP_USER` / `SMTP_PASSWORD`) before enabling email delivery.
 
+**Analytics (Stage 6.4):** authenticated team and player pages backed by stored games, play events, and FanGraphs disk caches:
+
+- `GET /teams/{team_id}/analytics?season=` — record, home/away splits, monthly trend, model accuracy, FanGraphs season row
+- `GET /players/{player_id}/analytics?season=` — probable-start outcomes, event splits, FanGraphs pitcher row (name match)
+- `GET /analytics/matchup?home_team_id=&away_team_id=&season=` — head-to-head games + FanGraphs diffs
+
+Frontend: `/analytics` hub, `/teams/[teamId]`, `/players/[playerId]`, `/analytics/matchup`.
+
 **Live resilience:** play events are deduped by MLB `atBatIndex` (`play-{n}`) with DB uniqueness; MLB fetches retry with exponential backoff (and honor `Retry-After` on 429); polls are rate-limited between games; when Redis or the MLB feed is unavailable (or the snapshot is older than `LIVE_STALE_AFTER_SECONDS`), the API serves the last Postgres snapshot with `degraded=true` so the UI can show a “Live data degraded” banner.
 
 **Live WebSockets** (authenticated via `?token=` JWT query param):

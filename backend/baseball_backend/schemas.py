@@ -239,3 +239,160 @@ class NotificationRead(BaseModel):
 
 class NotificationUnreadCount(BaseModel):
     count: int
+
+
+class TeamFangraphsStats(BaseModel):
+    fangraphs_team: str
+    wrc_plus: Optional[float] = None
+    team_fip: Optional[float] = None
+    bullpen_fip: Optional[float] = None
+    median_starter_fip: Optional[float] = None
+
+
+class PitcherFangraphsStats(BaseModel):
+    fangraphs_name: str
+    fangraphs_team: Optional[str] = None
+    fip: Optional[float] = None
+    era: Optional[float] = None
+    ip: Optional[float] = None
+    gs: Optional[float] = None
+    k_per_9: Optional[float] = None
+    bb_per_9: Optional[float] = None
+
+
+class TeamRecordSummary(BaseModel):
+    games: int
+    wins: int
+    losses: int
+    runs_scored: int
+    runs_allowed: int
+    run_diff: int
+
+
+class VenueSplitSide(BaseModel):
+    games: int
+    wins: int
+    losses: int
+
+
+class TeamVenueSplits(BaseModel):
+    home: VenueSplitSide
+    away: VenueSplitSide
+
+
+class MonthlyTrendRow(BaseModel):
+    month: str
+    games: int
+    wins: int
+    losses: int
+    runs_scored: int
+    runs_allowed: int
+    run_diff: int
+
+
+class TeamPredictionAccuracy(BaseModel):
+    n_predictions: int
+    n_correct: int
+    accuracy: Optional[float] = None
+    model_version_id: Optional[int] = None
+    run_id: Optional[str] = None
+
+
+class TeamRecentGame(BaseModel):
+    game_pk: int
+    game_date: date
+    opponent_abbreviation: str
+    opponent_name: str
+    is_home: bool
+    runs_scored: int
+    runs_allowed: int
+    result: str
+
+
+class TeamAnalyticsRead(BaseModel):
+    team: TeamRead
+    season: int
+    record: TeamRecordSummary
+    splits: TeamVenueSplits
+    monthly_trend: list[MonthlyTrendRow]
+    prediction_accuracy: TeamPredictionAccuracy
+    fangraphs: Optional[TeamFangraphsStats] = None
+    recent_games: list[TeamRecentGame] = Field(default_factory=list)
+
+
+class PlayerDetailRead(BaseModel):
+    id: int
+    full_name: str
+    primary_position: Optional[str] = None
+    team: Optional[TeamRead] = None
+
+
+class PlayerStartGame(BaseModel):
+    game_pk: int
+    game_date: date
+    is_home: bool
+    opponent_abbreviation: str
+    opponent_name: str
+    team_score: Optional[int] = None
+    opponent_score: Optional[int] = None
+    result: Optional[str] = None
+    detailed_state: str
+
+
+class ProbableStartsSummary(BaseModel):
+    games: int
+    wins: int
+    losses: int
+    win_pct: Optional[float] = None
+    games_detail: list[PlayerStartGame] = Field(default_factory=list)
+
+
+class PlayerEventSplits(BaseModel):
+    scoring_plays_as_batter: int
+    scoring_plays_as_pitcher: int
+    rbi: int
+    events_scanned: int
+
+
+class PlayerAnalyticsRead(BaseModel):
+    player: PlayerDetailRead
+    season: int
+    probable_starts: ProbableStartsSummary
+    event_splits: PlayerEventSplits
+    fangraphs: Optional[PitcherFangraphsStats] = None
+
+
+class MatchupGameRow(BaseModel):
+    game_pk: int
+    game_date: date
+    venue_home_abbreviation: str
+    venue_away_abbreviation: str
+    home_score: Optional[int] = None
+    away_score: Optional[int] = None
+    detailed_state: str
+    winner: Optional[str] = None
+
+
+class HeadToHeadSummary(BaseModel):
+    meetings: int
+    scored_games: int
+    home_wins: int
+    away_wins: int
+    games: list[MatchupGameRow] = Field(default_factory=list)
+
+
+class FangraphsDiff(BaseModel):
+    wrc_plus: Optional[float] = None
+    team_fip: Optional[float] = None
+    bullpen_fip: Optional[float] = None
+    median_starter_fip: Optional[float] = None
+
+
+class MatchupAnalyticsRead(BaseModel):
+    season: int
+    home_team: TeamRead
+    away_team: TeamRead
+    head_to_head: HeadToHeadSummary
+    fangraphs_home: Optional[TeamFangraphsStats] = None
+    fangraphs_away: Optional[TeamFangraphsStats] = None
+    fangraphs_diff: Optional[FangraphsDiff] = None

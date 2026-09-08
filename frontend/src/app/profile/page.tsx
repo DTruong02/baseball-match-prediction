@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -345,9 +346,12 @@ export default function ProfilePage() {
                           className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
                         >
                           <div className="min-w-0">
-                            <p className="truncate font-medium">
+                            <Link
+                              href={`/teams/${follow.team!.id}`}
+                              className="truncate font-medium hover:text-accent"
+                            >
                               {teamLabel(follow.team!)}
-                            </p>
+                            </Link>
                             <p className="text-xs text-muted">
                               {follow.team!.abbreviation}
                             </p>
@@ -377,9 +381,12 @@ export default function ProfilePage() {
                           key={follow.id}
                           className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
                         >
-                          <p className="truncate font-medium">
+                          <Link
+                            href={`/players/${follow.player!.id}`}
+                            className="truncate font-medium hover:text-accent"
+                          >
                             {follow.player!.full_name}
-                          </p>
+                          </Link>
                           <button
                             type="button"
                             disabled={saving}

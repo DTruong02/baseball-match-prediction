@@ -6,11 +6,13 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from baseball_backend.routes.analytics import router as analytics_router
 from baseball_backend.routes.auth import router as auth_router
 from baseball_backend.routes.follows import router as follows_router
 from baseball_backend.routes.games import router as games_router
 from baseball_backend.routes.model import router as model_router
 from baseball_backend.routes.notifications import router as notifications_router
+from baseball_backend.routes.players import router as players_router
 from baseball_backend.routes.predictions import router as predictions_router
 from baseball_backend.routes.teams import router as teams_router
 from baseball_backend.routes.ws import router as ws_router
@@ -44,11 +46,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(analytics_router)
 app.include_router(auth_router)
 app.include_router(follows_router)
 app.include_router(games_router)
 app.include_router(model_router)
 app.include_router(notifications_router)
+app.include_router(players_router)
 app.include_router(predictions_router)
 app.include_router(teams_router)
 app.include_router(ws_router)
