@@ -46,6 +46,22 @@ class PlayerRead(BaseModel):
     full_name: str
 
 
+class FollowCreate(BaseModel):
+    entity_type: str = Field(pattern="^(team|player)$")
+    team_id: Optional[int] = None
+    player_id: Optional[int] = None
+
+
+class FollowRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    entity_type: str
+    team: Optional[TeamRead] = None
+    player: Optional[PlayerRead] = None
+    created_at: datetime
+
+
 class GameRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -64,6 +80,7 @@ class GameRead(BaseModel):
     home_score: Optional[int] = None
     away_score: Optional[int] = None
     winner: Optional[str] = None
+    followed: bool = False
 
 
 class ModelVersionSummary(BaseModel):

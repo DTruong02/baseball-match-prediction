@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from baseball_backend.db.models import Game, GameEvent, User
+from baseball_backend.db.models import Game, GameEvent, User, UserFollow
 from baseball_backend.db.session import get_db
 from baseball_backend.deps import get_current_user
 from baseball_backend.schemas import (
@@ -47,19 +47,51 @@ def _require_game(db: Session, game_pk: int) -> Game:
     return game
 
 
+def _followed_team_ids(db: Session, user_id: int) -> set[int]:
+    return {
+        team_id
+        for team_id in db.scalars(
+            select(UserFollow.team_id).where(
+                UserFollow.user_id == user_id,
+                UserFollow.team_id.is_not(None),
+            )
+        ).all()
+        if team_id is not None
+    }
+
+
+def _game_to_read(game: Game, followed_team_ids: set[int]) -> GameRead:
+    followed = (
+        game.home_team_id in followed_team_ids or game.away_team_id in followed_team_ids
+    )
+    return GameRead(
+        **GameRead.model_validate(game).model_dump(exclude={"followed"}),
+        followed=followed,
+    )
+
+
 @router.get("", response_model=list[GameRead])
 def list_games(
     game_date: date = Query(default_factory=date.today, alias="date"),
+    following_only: bool = Query(default=False),
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
-) -> list[Game]:
-    return list(
+    current_user: User = Depends(get_current_user),
+) -> list[GameRead]:
+    games = list(
         db.scalars(
             _game_query()
             .where(Game.game_date == game_date)
             .order_by(Game.game_pk)
         ).all()
     )
+    followed_ids = _followed_team_ids(db, current_user.id)
+    reads = [_game_to_read(game, followed_ids) for game in games]
+    if following_only:
+        reads = [game for game in reads if game.followed]
+    else:
+        # Prioritize followed teams' games while keeping game_pk order within groups.
+        reads.sort(key=lambda game: (not game.followed, game.game_pk))
+    return reads
 
 
 @router.post("/sync", response_model=ScheduleSyncResponse)

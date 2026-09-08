@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any, Optional
 
 from sqlalchemy import (
+    CheckConstraint,
     JSON,
     Date,
     DateTime,
@@ -35,6 +36,11 @@ class ModelVersionKind(str, Enum):
     IN_GAME = "in_game"
 
 
+class FollowEntityType(str, Enum):
+    TEAM = "team"
+    PLAYER = "player"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -49,6 +55,11 @@ class User(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    follows: Mapped[list["UserFollow"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
 
 
@@ -73,6 +84,7 @@ class Team(Base):
         foreign_keys="Game.away_team_id",
     )
     players: Mapped[list["Player"]] = relationship(back_populates="team")
+    follows: Mapped[list["UserFollow"]] = relationship(back_populates="team")
 
 
 class Player(Base):
@@ -88,6 +100,56 @@ class Player(Base):
     primary_position: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     team: Mapped[Optional[Team]] = relationship(back_populates="players")
+    follows: Mapped[list["UserFollow"]] = relationship(back_populates="player")
+
+
+class UserFollow(Base):
+    """User watchlist entry for a team or player."""
+
+    __tablename__ = "user_follows"
+    __table_args__ = (
+        CheckConstraint(
+            "(entity_type = 'team' AND team_id IS NOT NULL AND player_id IS NULL) "
+            "OR (entity_type = 'player' AND player_id IS NOT NULL AND team_id IS NULL)",
+            name="ck_user_follows_entity_target",
+        ),
+        Index(
+            "uq_user_follows_user_team",
+            "user_id",
+            "team_id",
+            unique=True,
+            postgresql_where="team_id IS NOT NULL",
+            sqlite_where="team_id IS NOT NULL",
+        ),
+        Index(
+            "uq_user_follows_user_player",
+            "user_id",
+            "player_id",
+            unique=True,
+            postgresql_where="player_id IS NOT NULL",
+            sqlite_where="player_id IS NOT NULL",
+        ),
+        Index("ix_user_follows_user_id", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    entity_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    team_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=True
+    )
+    player_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("players.id", ondelete="CASCADE"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped[User] = relationship(back_populates="follows")
+    team: Mapped[Optional[Team]] = relationship(back_populates="follows")
+    player: Mapped[Optional[Player]] = relationship(back_populates="follows")
 
 
 class Game(Base):

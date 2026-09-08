@@ -2,6 +2,7 @@
 
 from baseball_backend.db.base import Base
 from baseball_backend.db.models import (
+    FollowEntityType,
     Game,
     GameEvent,
     ModelVersion,
@@ -11,11 +12,13 @@ from baseball_backend.db.models import (
     Prediction,
     Team,
     User,
+    UserFollow,
 )
 from baseball_backend.db.session import get_db, get_engine, get_session_factory
 
 __all__ = [
     "Base",
+    "FollowEntityType",
     "Game",
     "GameEvent",
     "ModelVersion",
@@ -25,6 +28,7 @@ __all__ = [
     "Prediction",
     "Team",
     "User",
+    "UserFollow",
     "get_db",
     "get_engine",
     "get_session_factory",
