@@ -22,6 +22,10 @@ from baseball_backend.services.live_cache import (
     get_live_feed_health,
     parse_game_pk_from_channel,
 )
+from baseball_backend.services.live_status import (
+    FINAL_DETAILED_STATES,
+    is_live_tracking_status,
+)
 from baseball_backend.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -90,7 +94,10 @@ def is_live_payload_stale(
 
     status = str(payload.get("status") or "")
     detailed = str(payload.get("detailed_state") or "")
-    if status == "Final" or detailed in {"Final", "Game Over", "Completed Early"}:
+    # Pregame / final games are not continuously refreshed in Redis.
+    if not is_live_tracking_status(status, detailed):
+        return False
+    if status == "Final" or detailed in FINAL_DETAILED_STATES:
         return False
 
     updated_at = _parse_updated_at(payload.get("updated_at"))
@@ -111,7 +118,18 @@ def is_live_feed_degraded() -> bool:
 
 
 def snapshot_is_degraded(payload: dict[str, Any] | None, *, source: str | None) -> bool:
-    """Decide whether clients should show the live-data-degraded banner."""
+    """Decide whether clients should show the live-data-degraded banner.
+
+    Only in-progress (worker-tracked) games can be degraded. Scheduled / Preview /
+    Final games normally have no Redis live snapshot, so missing Redis is not an
+    outage signal for those statuses.
+    """
+    if payload is None:
+        return True
+    status = str(payload.get("status") or "")
+    detailed = str(payload.get("detailed_state") or "")
+    if not is_live_tracking_status(status, detailed):
+        return False
     if source != "redis":
         return True
     if is_live_feed_degraded():
@@ -172,8 +190,10 @@ def resolve_live_snapshot(
     """
     Prefer Redis live state; fall back to Postgres.
 
-    Returns ``(payload, source, degraded)``. Degraded is true when Redis is
-    unavailable, the MLB feed is unhealthy, or the cached payload is stale.
+    Returns ``(payload, source, degraded)``. Degraded is true only for
+    in-progress games when Redis is unavailable, the MLB feed is unhealthy,
+    or the cached payload is stale. Pregame / final games are never marked
+    degraded solely because they lack a Redis snapshot.
     """
     cached = get_cached_live_state(game_pk)
     if cached is not None:
@@ -183,7 +203,7 @@ def resolve_live_snapshot(
     record_live_cache_miss()
     snapshot = postgres_live_snapshot(db, game_pk)
     if snapshot is not None:
-        return snapshot, "postgres", True
+        return snapshot, "postgres", snapshot_is_degraded(snapshot, source="postgres")
 
     return None, None, True
 

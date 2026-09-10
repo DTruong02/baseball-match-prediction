@@ -20,6 +20,7 @@ from baseball_analyze.data.mlb_client import (
     fetch_live_feed,
     fetch_schedule_season,
     home_team_won_from_linescore,
+    prefetch_season_pitcher_stats,
 )
 from baseball_analyze.features.in_game import (
     IN_GAME_FEATURE_COLUMNS,
@@ -39,6 +40,11 @@ from baseball_analyze.models.training_config import (
     apply_cli_overrides,
     load_training_config,
 )
+from baseball_analyze.models.training_filters import (
+    include_game_date,
+    is_completed_game,
+    resolve_split_masks,
+)
 
 IN_GAME_KIND = "in_game"
 
@@ -57,6 +63,8 @@ def _append_training_log_csv(
         "kind",
         "seasons",
         "val_seasons",
+        "through_date",
+        "val_from_date",
         "split_type",
         "train_rows",
         "val_rows",
@@ -86,13 +94,15 @@ def build_in_game_training_sample(
     seasons: List[int],
     cache_dir: Optional[Path],
     max_games: Optional[int],
-    sleep_s: float = 0.12,
+    sleep_s: float = 0.0,
+    through_date: Optional[str] = None,
 ) -> Tuple[np.ndarray, np.ndarray, List[InGameFeatureRow]]:
     """
     Build PA-level training rows from completed games' live/play-by-play feeds.
 
     Labels are the game's final home-win outcome (standard in-game WP training).
     ``max_games`` caps the number of *games*, not feature rows.
+    Optional ``through_date`` keeps only Final games on/before that YYYY-MM-DD.
     """
     rows: list[InGameFeatureRow] = []
     n_games = 0
@@ -122,7 +132,9 @@ def build_in_game_training_sample(
                     f"Stopped after {scan_count} schedule rows without enough successes; "
                     "try a different season or inspect network/MLB API errors."
                 )
-            if g.detailed_state not in ("Final", "Completed Early"):
+            if not is_completed_game(g.detailed_state):
+                continue
+            if not include_game_date(g.game_date, through_date=through_date):
                 continue
 
             time.sleep(sleep_s)
@@ -140,6 +152,7 @@ def build_in_game_training_sample(
                     away_abbrev=g.away_abbrev,
                     home_won=home_won,
                     cache_dir=cache_dir,
+                    game_date=g.game_date,
                 )
             except (MLBAPIError, KeyError, httpx.HTTPError, ValueError, TypeError):
                 continue
@@ -199,6 +212,8 @@ def _game_level_masks(
 def _run_training(cfg: TrainingConfig) -> None:
     season_list = cfg.seasons
     val_list = cfg.val_seasons
+    through_date = cfg.through_date
+    val_from_date = cfg.val_from_date
     out = cfg.out
     test_size = cfg.test_size
     max_games = cfg.max_games
@@ -212,27 +227,36 @@ def _run_training(cfg: TrainingConfig) -> None:
     for s in season_list:
         typer.echo(f"Loading Savant bullpen table for {s} (cached under ./cache/)...")
         bullpen_fip_by_team(s, cache_dir=cache_dir)
+        typer.echo(f"Prefetching MLB pitcher FIP/K-BB caches for {s}...")
+        warmed = prefetch_season_pitcher_stats(s)
+        typer.echo(
+            "  warmed "
+            f"fip={warmed['filled_fip']} kbb9={warmed['filled_kbb9']} "
+            f"(season_rows={warmed['pitchers_season']}, "
+            f"saber_rows={warmed['pitchers_sabermetrics']})"
+        )
 
     X, y, rows = build_in_game_training_sample(
         season_list,
         cache_dir=cache_dir,
         max_games=max_games,
+        through_date=through_date,
     )
 
-    split_type = "random_by_game"
-    if val_list:
-        val_set = set(val_list)
-        val_mask = np.array([r.season in val_set for r in rows], dtype=bool)
-        if not val_mask.any():
-            raise RuntimeError(f"val_seasons {val_list} produced 0 validation rows. Check seasons.")
-        if val_mask.all():
-            raise RuntimeError(f"val_seasons {val_list} captured all rows; no training rows left.")
-        train_mask = ~val_mask
-        split_type = "time"
+    split_type, resolved_val_mask = resolve_split_masks(
+        seasons=[r.season for r in rows],
+        game_dates=[r.game_date for r in rows],
+        val_seasons=val_list,
+        val_from_date=val_from_date,
+    )
+    if resolved_val_mask is not None:
+        train_mask = ~resolved_val_mask
+        val_mask = resolved_val_mask
     else:
         train_mask, val_mask = _game_level_masks(
             rows, test_size=test_size, random_state=random_state
         )
+        split_type = "random_by_game"
 
     X_train, y_train = X[train_mask], y[train_mask]
     X_val, y_val = X[val_mask], y[val_mask]
@@ -281,6 +305,8 @@ def _run_training(cfg: TrainingConfig) -> None:
         created_at=created_at,
         git_hash=git_hash,
         kind=IN_GAME_KIND,
+        through_date=through_date,
+        val_from_date=val_from_date,
     )
     artifacts_root = out.parent
     run_dir = save_versioned_run(
@@ -304,6 +330,8 @@ def _run_training(cfg: TrainingConfig) -> None:
             "kind": IN_GAME_KIND,
             "seasons": ",".join(str(s) for s in season_list),
             "val_seasons": ",".join(str(s) for s in val_list),
+            "through_date": through_date or "",
+            "val_from_date": val_from_date or "",
             "split_type": split_type,
             "train_rows": int(len(y_train)),
             "val_rows": int(len(y_val)),
@@ -340,13 +368,21 @@ def train_in_game_run(
         None,
         help="Comma-separated seasons to use as validation (time split).",
     ),
+    through_date: Optional[str] = typer.Option(
+        None,
+        help="Only include Final games on or before this YYYY-MM-DD (mid-season cutoff).",
+    ),
+    val_from_date: Optional[str] = typer.Option(
+        None,
+        help="Hold out Final games on/after this YYYY-MM-DD for validation (takes precedence over --val-seasons).",
+    ),
     out: Optional[Path] = typer.Option(
         None,
         help="Where to save the sklearn pipeline convenience copy.",
     ),
     test_size: Optional[float] = typer.Option(
         None,
-        help="Holdout fraction of games for metrics (when val_seasons is empty).",
+        help="Holdout fraction of games for metrics (when val_seasons/val_from_date empty).",
     ),
     max_games: Optional[int] = typer.Option(
         None,
@@ -387,6 +423,8 @@ def train_in_game_run(
         base,
         seasons=seasons,
         val_seasons=val_seasons,
+        through_date=through_date,
+        val_from_date=val_from_date,
         out=out,
         test_size=test_size,
         max_games=max_games,

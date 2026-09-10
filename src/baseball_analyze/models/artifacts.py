@@ -60,6 +60,8 @@ def build_manifest(
     created_at: Optional[datetime] = None,
     git_hash: Optional[str] = None,
     kind: Optional[str] = None,
+    through_date: Optional[str] = None,
+    val_from_date: Optional[str] = None,
 ) -> dict[str, Any]:
     """Build the JSON-serializable manifest for a training run."""
     created = created_at or datetime.now(timezone.utc)
@@ -69,6 +71,8 @@ def build_manifest(
         "feature_columns": list(feature_columns if feature_columns is not None else FEATURE_COLUMNS),
         "seasons": list(seasons),
         "val_seasons": list(val_seasons),
+        "through_date": through_date,
+        "val_from_date": val_from_date,
         "split_type": split_type,
         "train_rows": int(train_rows),
         "val_rows": int(val_rows),

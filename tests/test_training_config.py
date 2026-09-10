@@ -13,15 +13,17 @@ def test_load_logistic_regression_yaml():
     path = Path("configs/logistic_regression.yaml")
     cfg = load_training_config(path)
 
-    assert cfg.seasons == [2022, 2023]
+    assert cfg.seasons == [2024, 2025, 2026]
     assert cfg.val_seasons == []
+    assert cfg.through_date is None
+    assert cfg.val_from_date == "2026-08-01"
     assert cfg.max_games is None
     assert cfg.test_size == 0.25
     assert cfg.out == Path("artifacts/model.joblib")
     assert cfg.log_csv == Path("artifacts/training_log.csv")
     assert cfg.random_state == 42
     assert cfg.cache_dir is None
-    assert cfg.hyperparameters.calibrate is False
+    assert cfg.hyperparameters.calibrate is True
     assert cfg.hyperparameters.class_weight == "balanced"
     assert cfg.hyperparameters.c_grid == [0.05, 0.1, 0.5, 1.0, 5.0, 10.0]
 
@@ -31,6 +33,8 @@ def test_training_config_defaults_match_legacy_cli():
 
     assert cfg.seasons == [2022, 2023]
     assert cfg.val_seasons == []
+    assert cfg.through_date is None
+    assert cfg.val_from_date is None
     assert cfg.out == Path("artifacts/model.joblib")
     assert cfg.test_size == 0.25
     assert cfg.max_games is None
@@ -46,6 +50,8 @@ def test_apply_cli_overrides():
         base,
         seasons="2023,2024",
         val_seasons="2024",
+        through_date="2026-09-01",
+        val_from_date="2026-08-15",
         max_games=250,
         tune_c="0.5,1",
         class_weight="none",
@@ -57,6 +63,8 @@ def test_apply_cli_overrides():
 
     assert cfg.seasons == [2023, 2024]
     assert cfg.val_seasons == [2024]
+    assert cfg.through_date == "2026-09-01"
+    assert cfg.val_from_date == "2026-08-15"
     assert cfg.max_games == 250
     assert cfg.hyperparameters.c_grid == [0.5, 1.0]
     assert cfg.hyperparameters.class_weight == "none"
@@ -74,3 +82,8 @@ def test_load_training_config_rejects_non_mapping(tmp_path: Path):
 
     with pytest.raises(ValueError, match="YAML mapping"):
         load_training_config(bad)
+
+
+def test_training_config_rejects_bad_date():
+    with pytest.raises(ValueError, match="YYYY-MM-DD"):
+        TrainingConfig(through_date="09-01-2026")

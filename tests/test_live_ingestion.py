@@ -157,6 +157,114 @@ def test_sync_live_game_is_idempotent_for_events(
     )
 
 
+@patch("baseball_backend.services.live_ingestion.fetch_live_feed")
+def test_sync_live_game_updates_incomplete_event_payload(
+    mock_feed: object,
+    db_session: Session,
+) -> None:
+    """Plays inserted mid-PA should pick up description once MLB fills result."""
+    _seed_game(db_session)
+
+    incomplete = {
+        "gameData": {
+            "status": {"abstractGameState": "Live", "detailedState": "In Progress"}
+        },
+        "liveData": {
+            "linescore": {
+                "currentInning": 1,
+                "inningState": "Top",
+                "isTopInning": True,
+                "outs": 0,
+                "balls": 0,
+                "strikes": 0,
+                "teams": {"home": {"runs": 0}, "away": {"runs": 0}},
+                "offense": {},
+            },
+            "plays": {
+                "allPlays": [
+                    {
+                        "about": {
+                            "atBatIndex": 0,
+                            "inning": 1,
+                            "halfInning": "top",
+                            "isTopInning": True,
+                            "isComplete": False,
+                            "isScoringPlay": False,
+                        },
+                        "result": {},
+                        "matchup": {
+                            "batter": {"id": 1, "fullName": "Test Batter"},
+                            "pitcher": {"id": 2, "fullName": "Test Pitcher"},
+                        },
+                    }
+                ]
+            },
+        },
+    }
+    complete = {
+        "gameData": {
+            "status": {"abstractGameState": "Live", "detailedState": "In Progress"}
+        },
+        "liveData": {
+            "linescore": {
+                "currentInning": 1,
+                "inningState": "Top",
+                "isTopInning": True,
+                "outs": 1,
+                "balls": 0,
+                "strikes": 0,
+                "teams": {"home": {"runs": 0}, "away": {"runs": 0}},
+                "offense": {},
+            },
+            "plays": {
+                "allPlays": [
+                    {
+                        "about": {
+                            "atBatIndex": 0,
+                            "inning": 1,
+                            "halfInning": "top",
+                            "isTopInning": True,
+                            "isComplete": True,
+                            "isScoringPlay": False,
+                        },
+                        "result": {
+                            "event": "Strikeout",
+                            "eventType": "strikeout",
+                            "description": "Test Batter strikes out swinging.",
+                            "rbi": 0,
+                            "awayScore": 0,
+                            "homeScore": 0,
+                        },
+                        "matchup": {
+                            "batter": {"id": 1, "fullName": "Test Batter"},
+                            "pitcher": {"id": 2, "fullName": "Test Pitcher"},
+                        },
+                    }
+                ]
+            },
+        },
+    }
+    mock_feed.side_effect = [incomplete, complete]
+
+    first = sync_live_game(db_session, 824239, retries=0)
+    assert first["events_inserted"] == 1
+    row = db_session.scalar(
+        select(GameEvent).where(
+            GameEvent.game_pk == 824239, GameEvent.event_id == "play-0"
+        )
+    )
+    assert row is not None
+    assert not row.payload.get("description")
+    assert row.payload.get("batter_name") == "Test Batter"
+
+    second = sync_live_game(db_session, 824239, retries=0)
+    assert second["events_inserted"] == 0
+    db_session.refresh(row)
+    assert row.payload.get("description") == "Test Batter strikes out swinging."
+    assert row.payload.get("event") == "Strikeout"
+    assert row.payload.get("is_complete") is True
+
+
 @patch(
     "baseball_backend.services.live_ingestion.fetch_schedule_for_date",
     return_value=[],
@@ -214,3 +322,19 @@ def test_sync_live_games_for_date_includes_schedule_candidates(
     assert 824239 in pks
     assert 999001 in pks
     assert any("error" in summary for summary in summaries if summary["game_pk"] == 999001)
+
+
+@patch(
+    "baseball_backend.services.live_ingestion.fetch_schedule_for_date",
+    return_value=[],
+)
+@patch("baseball_backend.services.live_ingestion.set_live_feed_health")
+def test_sync_live_games_for_date_marks_healthy_when_idle(
+    mock_set_health: object,
+    _mock_schedule: object,
+    db_session: Session,
+) -> None:
+    """Empty poll cycles must clear a stale ok=false feed-health marker."""
+    summaries = sync_live_games_for_date(db_session, "2026-08-15", game_delay_seconds=0)
+    assert summaries == []
+    mock_set_health.assert_called_once_with(ok=True)

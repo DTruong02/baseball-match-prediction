@@ -1,9 +1,6 @@
-import type { Game, Prediction } from "@/lib/types";
 import { favoredSide, formatWinProbability } from "@/lib/predictions";
-
-function teamLabel(team: Game["home_team"]): string {
-  return team.city ? `${team.city} ${team.name}` : team.name;
-}
+import { teamLabel } from "@/lib/teams";
+import type { Game, Prediction } from "@/lib/types";
 
 interface PredictionDisplayProps {
   game: Game;

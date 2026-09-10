@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import JSON, create_engine
+from sqlalchemy import JSON, create_engine, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -232,6 +232,14 @@ def test_is_live_payload_stale() -> None:
     ).isoformat()
     assert is_live_payload_stale(final_payload, stale_after_seconds=90) is False
 
+    preview = _sample_live_payload()
+    preview["status"] = "Preview"
+    preview["detailed_state"] = "Scheduled"
+    preview["updated_at"] = (
+        datetime.now(timezone.utc) - timedelta(hours=2)
+    ).isoformat()
+    assert is_live_payload_stale(preview, stale_after_seconds=90) is False
+
 
 def test_resolve_live_snapshot_marks_stale_redis_as_degraded(
     db_session: Session,
@@ -306,6 +314,44 @@ def test_resolve_live_snapshot_falls_back_to_postgres(
     assert data["home_score"] == 3
     assert source == "postgres"
     assert degraded is True
+
+
+def test_resolve_live_snapshot_pregame_postgres_not_degraded(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "baseball_backend.services.live_ws.get_cached_live_state",
+        lambda _game_pk: None,
+    )
+    data, source, degraded = resolve_live_snapshot(db_session, 824240)
+    assert data is not None
+    assert data["status"] == "Preview"
+    assert source == "postgres"
+    assert degraded is False
+
+
+def test_resolve_live_snapshot_final_postgres_not_degraded(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    game = db_session.scalar(select(Game).where(Game.game_pk == 824240))
+    assert game is not None
+    game.status = "Final"
+    game.detailed_state = "Final"
+    game.home_score = 5
+    game.away_score = 2
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "baseball_backend.services.live_ws.get_cached_live_state",
+        lambda _game_pk: None,
+    )
+    data, source, degraded = resolve_live_snapshot(db_session, 824240)
+    assert data is not None
+    assert data["status"] == "Final"
+    assert source == "postgres"
+    assert degraded is False
 
 
 def test_connection_manager_broadcasts_to_game_and_slate() -> None:

@@ -4,9 +4,13 @@
 #
 # After training, register with kind=in_game (manifest includes kind; CLI can omit --kind):
 #   baseball-register-model <run_id> --activate
+#
+# Mid-season: include finished current-year games; hold out recent dates for validation.
 
-seasons: [2023]
+seasons: [2024, 2025, 2026]
 val_seasons: []
+through_date: null
+val_from_date: "2026-07-01"
 max_games: null
 test_size: 0.25
 out: artifacts/in_game_model.joblib

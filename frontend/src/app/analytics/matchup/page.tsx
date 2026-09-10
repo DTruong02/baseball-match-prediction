@@ -7,6 +7,7 @@ import { Suspense, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ApiError, fetchMatchupAnalytics } from "@/lib/api";
+import { teamLabel } from "@/lib/teams";
 import type { MatchupAnalytics } from "@/lib/types";
 
 function formatMetric(value: number | null | undefined, digits = 1): string {
@@ -14,10 +15,6 @@ function formatMetric(value: number | null | undefined, digits = 1): string {
     return "—";
   }
   return value.toFixed(digits);
-}
-
-function teamLabel(team: MatchupAnalytics["home_team"]): string {
-  return team.city ? `${team.city} ${team.name}` : team.name;
 }
 
 function MatchupContent() {

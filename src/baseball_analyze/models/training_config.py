@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
+
+from baseball_analyze.models.training_filters import coerce_optional_iso_date
 
 
 class HyperparametersConfig(BaseModel):
@@ -24,6 +26,8 @@ class HyperparametersConfig(BaseModel):
 class TrainingConfig(BaseModel):
     seasons: list[int] = Field(default_factory=lambda: [2022, 2023])
     val_seasons: list[int] = Field(default_factory=list)
+    through_date: Optional[str] = None
+    val_from_date: Optional[str] = None
     out: Path = Path("artifacts/model.joblib")
     test_size: float = 0.25
     max_games: Optional[int] = None
@@ -48,6 +52,11 @@ class TrainingConfig(BaseModel):
             return Path(value)
         return value
 
+    @field_validator("through_date", "val_from_date", mode="before")
+    @classmethod
+    def _coerce_optional_date(cls, value: Any, info: ValidationInfo) -> Any:
+        return coerce_optional_iso_date(value, field_name=info.field_name)
+
 
 def _parse_season_list(value: str) -> list[int]:
     return [int(part.strip()) for part in value.split(",") if part.strip()]
@@ -71,6 +80,8 @@ def apply_cli_overrides(
     *,
     seasons: Optional[str] = None,
     val_seasons: Optional[str] = None,
+    through_date: Optional[str] = None,
+    val_from_date: Optional[str] = None,
     out: Optional[Path] = None,
     test_size: Optional[float] = None,
     max_games: Optional[int] = None,
@@ -89,6 +100,10 @@ def apply_cli_overrides(
         data["seasons"] = _parse_season_list(seasons)
     if val_seasons is not None:
         data["val_seasons"] = _parse_season_list(val_seasons)
+    if through_date is not None:
+        data["through_date"] = through_date
+    if val_from_date is not None:
+        data["val_from_date"] = val_from_date
     if out is not None:
         data["out"] = out
     if test_size is not None:

@@ -14,12 +14,6 @@ import numpy as np
 import typer
 from sklearn.model_selection import train_test_split
 
-from baseball_analyze.data.fangraphs_features import (
-    bullpen_fip_by_team,
-    load_team_batting,
-    load_team_pitching,
-    median_starter_fip_by_team,
-)
 from baseball_analyze.data.mlb_client import (
     MLBAPIError,
     ScheduledGame,
@@ -47,6 +41,11 @@ from baseball_analyze.models.training_config import (
     apply_cli_overrides,
     load_training_config,
 )
+from baseball_analyze.models.training_filters import (
+    include_game_date,
+    is_completed_game,
+    resolve_split_masks,
+)
 
 
 def _append_training_log_csv(
@@ -63,6 +62,8 @@ def _append_training_log_csv(
         "model_out",
         "seasons",
         "val_seasons",
+        "through_date",
+        "val_from_date",
         "split_type",
         "train_rows",
         "val_rows",
@@ -85,20 +86,36 @@ def _append_training_log_csv(
 
 
 def iter_completed_games(season: int) -> Iterator[ScheduledGame]:
-    yield from fetch_schedule_season(season)
+    # Hydrate probables so training matches live pregame inference.
+    yield from fetch_schedule_season(season, hydrate_probable=True)
 
 
 def build_training_sample(
     seasons: List[int],
     cache_dir: Optional[Path],
     max_games: Optional[int],
-    sleep_s: float = 0.12,
+    sleep_s: float = 0.0,
+    through_date: Optional[str] = None,
+    *,
+    starter_source: str = "probable",
 ) -> Tuple[np.ndarray, np.ndarray, List[FeatureRow]]:
     """
-    v1 training simplification:
-    Team/bullpen stats use full **season** FanGraphs tables (see README caveat).
-    Starters are taken from the **box score** (known after the game), not historical probables.
+    Build labeled pregame feature rows for completed games.
+
+    Defaults (accuracy-oriented):
+    - Team/bullpen/starter rates use **as-of** stats through the day before each
+      game (see ``build_features_for_game``).
+    - Starters come from schedule **probablePitcher** (aligned with predict).
+      When a probable is missing and ``starter_source`` allows, fall back to the
+      box-score starter so early-season TBD rows are not all dropped.
+
+    Only Final / Completed Early games are kept. Optional ``through_date``
+    (YYYY-MM-DD) further restricts the pool for mid-season runs.
     """
+    if starter_source not in ("probable", "boxscore", "probable_fallback_box"):
+        raise ValueError(
+            "starter_source must be 'probable', 'boxscore', or 'probable_fallback_box'"
+        )
     rows: list[FeatureRow] = []
     labels: list[int] = []
     n_done = 0
@@ -126,9 +143,11 @@ def build_training_sample(
             if max_scans is not None and scan_count > max_scans:
                 raise RuntimeError(
                     f"Stopped after {scan_count} schedule rows without enough successes; "
-                    "try a different season or inspect network/Savant errors."
+                    "try a different season or inspect network/MLB as-of errors."
                 )
-            if g.detailed_state not in ("Final", "Completed Early"):
+            if not is_completed_game(g.detailed_state):
+                continue
+            if not include_game_date(g.game_date, through_date=through_date):
                 continue
             time.sleep(sleep_s)
             try:
@@ -136,21 +155,35 @@ def build_training_sample(
                 yb = home_team_won_from_linescore(ls)
                 if yb is None:
                     continue
-                box = fetch_boxscore(g.game_pk)
-                hs, aw = extract_starting_pitcher_ids(box)
             except (MLBAPIError, KeyError, httpx.HTTPError):
                 continue
 
-            if hs is None or aw is None:
+            home_sp = g.home_probable_id
+            away_sp = g.away_probable_id
+            need_box = starter_source == "boxscore" or home_sp is None or away_sp is None
+            if need_box:
+                try:
+                    box = fetch_boxscore(g.game_pk)
+                    hs, aw = extract_starting_pitcher_ids(box)
+                except (MLBAPIError, KeyError, httpx.HTTPError):
+                    hs, aw = None, None
+                if starter_source == "boxscore":
+                    home_sp, away_sp = hs, aw
+                else:
+                    # probable (default): keep schedule IDs; fill gaps from boxscore.
+                    home_sp = home_sp if home_sp is not None else hs
+                    away_sp = away_sp if away_sp is not None else aw
+
+            if home_sp is None or away_sp is None:
                 continue
 
             g2 = replace(
                 g,
-                home_probable_id=hs,
-                away_probable_id=aw,
+                home_probable_id=home_sp,
+                away_probable_id=away_sp,
             )
             try:
-                fr = build_features_for_game(g2, cache_dir=cache_dir)
+                fr = build_features_for_game(g2, cache_dir=cache_dir, use_as_of=True)
             except Exception:
                 continue
 
@@ -173,6 +206,8 @@ def _run_training(cfg: TrainingConfig) -> None:
     """Collect games, train logistic regression, print metrics, save artifact."""
     season_list = cfg.seasons
     val_list = cfg.val_seasons
+    through_date = cfg.through_date
+    val_from_date = cfg.val_from_date
     out = cfg.out
     test_size = cfg.test_size
     max_games = cfg.max_games
@@ -184,29 +219,37 @@ def _run_training(cfg: TrainingConfig) -> None:
     random_state = cfg.random_state
 
     for s in season_list:
-        typer.echo(f"Loading Savant season tables for {s} (cached under ./cache/)...")
-        load_team_batting(s, cache_dir=cache_dir)
-        load_team_pitching(s, cache_dir=cache_dir)
-        bullpen_fip_by_team(s, cache_dir=cache_dir)
-        median_starter_fip_by_team(s, cache_dir=cache_dir)
+        typer.echo(
+            f"Season {s}: as-of team/pitcher tables build on demand per game date "
+            f"(cached under ./cache/)..."
+        )
     X, y, rows = build_training_sample(
         season_list,
         cache_dir=cache_dir,
         max_games=max_games,
+        through_date=through_date,
+        starter_source="probable",
     )
-    # Split: time-based by season if val_seasons provided, else random split
-    split_type = "random"
-    if val_list:
-        val_set = set(val_list)
-        val_mask = np.array([r.season in val_set for r in rows], dtype=bool)
-        if not val_mask.any():
-            raise RuntimeError(f"val_seasons {val_list} produced 0 validation rows. Check seasons.")
-        if val_mask.all():
-            raise RuntimeError(f"val_seasons {val_list} captured all rows; no training rows left.")
+    # Split: val_from_date > val_seasons > random
+    split_type, val_mask = resolve_split_masks(
+        seasons=[r.season for r in rows],
+        game_dates=[r.game_date for r in rows],
+        val_seasons=val_list,
+        val_from_date=val_from_date,
+    )
+    if val_mask is not None:
         X_train, y_train = X[~val_mask], y[~val_mask]
         X_val, y_val = X[val_mask], y[val_mask]
-        typer.echo(f"Time split: train_rows={len(y_train)} val_rows={len(y_val)} val_seasons={sorted(val_set)}")
-        split_type = "time"
+        if split_type == "time_date":
+            typer.echo(
+                f"Date split: train_rows={len(y_train)} val_rows={len(y_val)} "
+                f"val_from_date={val_from_date}"
+            )
+        else:
+            typer.echo(
+                f"Time split: train_rows={len(y_train)} val_rows={len(y_val)} "
+                f"val_seasons={sorted(set(val_list))}"
+            )
     else:
         try:
             X_train, X_val, y_train, y_val = train_test_split(
@@ -256,6 +299,8 @@ def _run_training(cfg: TrainingConfig) -> None:
         feature_columns=FEATURE_COLUMNS,
         created_at=created_at,
         git_hash=git_hash,
+        through_date=through_date,
+        val_from_date=val_from_date,
     )
     artifacts_root = out.parent
     run_dir = save_versioned_run(
@@ -278,6 +323,8 @@ def _run_training(cfg: TrainingConfig) -> None:
             "model_out": str(out),
             "seasons": ",".join(str(s) for s in season_list),
             "val_seasons": ",".join(str(s) for s in val_list),
+            "through_date": through_date or "",
+            "val_from_date": val_from_date or "",
             "split_type": split_type,
             "train_rows": int(len(y_train)),
             "val_rows": int(len(y_val)),
@@ -314,6 +361,14 @@ def train_run(
         None,
         help="Comma-separated seasons to use as validation (time split). Example: --seasons 2024,2025 --val-seasons 2025",
     ),
+    through_date: Optional[str] = typer.Option(
+        None,
+        help="Only include Final games on or before this YYYY-MM-DD (mid-season cutoff).",
+    ),
+    val_from_date: Optional[str] = typer.Option(
+        None,
+        help="Hold out Final games on/after this YYYY-MM-DD for validation (takes precedence over --val-seasons).",
+    ),
     out: Optional[Path] = typer.Option(
         None,
         help="Where to save the sklearn pipeline.",
@@ -345,6 +400,8 @@ def train_run(
         base,
         seasons=seasons,
         val_seasons=val_seasons,
+        through_date=through_date,
+        val_from_date=val_from_date,
         out=out,
         test_size=test_size,
         max_games=max_games,

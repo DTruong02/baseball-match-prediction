@@ -1,6 +1,7 @@
 {
   "gamePk": 778001,
-  "gameDate": "2025-04-06T20:05:00Z",
+  "gameDate": "2025-04-07T02:05:00Z",
+  "officialDate": "2025-04-06",
   "season": 2025,
   "status": { "abstractGameState": "Preview", "detailedState": "Scheduled" },
   "teams": {

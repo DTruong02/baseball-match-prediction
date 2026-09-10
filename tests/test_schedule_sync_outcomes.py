@@ -18,13 +18,17 @@ TEAMS_PAYLOAD = [
     {
         "id": 147,
         "abbreviation": "NYY",
-        "name": "Yankees",
-        "locationName": "New York",
+        "name": "New York Yankees",
+        "teamName": "Yankees",
+        "clubName": "Yankees",
+        "locationName": "Bronx",
     },
     {
         "id": 111,
         "abbreviation": "BOS",
-        "name": "Red Sox",
+        "name": "Boston Red Sox",
+        "teamName": "Red Sox",
+        "clubName": "Red Sox",
         "locationName": "Boston",
     },
 ]

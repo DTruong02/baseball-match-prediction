@@ -1,11 +1,8 @@
 import Link from "next/link";
 
 import { PredictionDisplay } from "@/components/PredictionDisplay";
+import { teamLabel } from "@/lib/teams";
 import type { Game, Prediction } from "@/lib/types";
-
-function teamLabel(team: Game["home_team"]): string {
-  return team.city ? `${team.city} ${team.name}` : team.name;
-}
 
 function formatScore(game: Game): string | null {
   if (game.home_score == null || game.away_score == null) {

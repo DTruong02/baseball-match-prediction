@@ -14,10 +14,35 @@ import {
   fetchHealth,
   fetchPrediction,
 } from "@/lib/api";
+import { isInProgressGame } from "@/lib/game-status";
 import type { Game, Prediction } from "@/lib/types";
 
 function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function GameGrid({
+  games,
+  predictions,
+}: {
+  games: Game[];
+  predictions: Record<number, Prediction | null>;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {games.map((game) => (
+        <GameCard
+          key={game.game_pk}
+          game={game}
+          prediction={predictions[game.game_pk]}
+        />
+      ))}
+    </div>
+  );
 }
 
 export default function DashboardPage() {
@@ -128,8 +153,10 @@ export default function DashboardPage() {
     };
   }, [selectedDate, followingOnly]);
 
-  const followedGames = games.filter((game) => game.followed);
-  const otherGames = games.filter((game) => !game.followed);
+  const inProgressGames = games.filter(isInProgressGame);
+  const notInProgressGames = games.filter((game) => !isInProgressGame(game));
+  const followedGames = notInProgressGames.filter((game) => game.followed);
+  const otherGames = notInProgressGames.filter((game) => !game.followed);
   const showSections = !followingOnly && followedGames.length > 0;
 
   return (
@@ -143,8 +170,8 @@ export default function DashboardPage() {
               </h1>
               <p className="mt-1 text-sm text-muted">
                 {hasFollows
-                  ? "Followed teams appear first with their predictions."
-                  : "MLB games synced to the platform database."}
+                  ? "In-progress games lead the slate; followed teams stay near the top."
+                  : "In-progress games appear first, then the rest of the slate."}
               </p>
               {!hasFollows ? (
                 <p className="mt-2 text-sm text-muted">
@@ -200,44 +227,44 @@ export default function DashboardPage() {
                   : "Sync the schedule from the API if you have not loaded this date yet."}
               </p>
             </div>
-          ) : showSections ? (
+          ) : (
             <div className="space-y-8">
-              <div className="space-y-4">
-                <h2 className="text-sm font-medium text-muted">Your teams</h2>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {followedGames.map((game) => (
-                    <GameCard
-                      key={game.game_pk}
-                      game={game}
-                      prediction={predictions[game.game_pk]}
-                    />
-                  ))}
-                </div>
-              </div>
-              {otherGames.length > 0 ? (
+              {inProgressGames.length > 0 ? (
                 <div className="space-y-4">
-                  <h2 className="text-sm font-medium text-muted">Rest of slate</h2>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {otherGames.map((game) => (
-                      <GameCard
-                        key={game.game_pk}
-                        game={game}
-                        prediction={predictions[game.game_pk]}
-                      />
-                    ))}
-                  </div>
+                  <h2 className="text-sm font-medium text-muted">In progress</h2>
+                  <GameGrid games={inProgressGames} predictions={predictions} />
                 </div>
               ) : null}
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {games.map((game) => (
-                <GameCard
-                  key={game.game_pk}
-                  game={game}
-                  prediction={predictions[game.game_pk]}
-                />
-              ))}
+              {showSections ? (
+                <>
+                  {followedGames.length > 0 ? (
+                    <div className="space-y-4">
+                      <h2 className="text-sm font-medium text-muted">Your teams</h2>
+                      <GameGrid games={followedGames} predictions={predictions} />
+                    </div>
+                  ) : null}
+                  {otherGames.length > 0 ? (
+                    <div className="space-y-4">
+                      <h2 className="text-sm font-medium text-muted">
+                        Rest of slate
+                      </h2>
+                      <GameGrid games={otherGames} predictions={predictions} />
+                    </div>
+                  ) : null}
+                </>
+              ) : notInProgressGames.length > 0 ? (
+                <div className="space-y-4">
+                  {inProgressGames.length > 0 ? (
+                    <h2 className="text-sm font-medium text-muted">
+                      Rest of slate
+                    </h2>
+                  ) : null}
+                  <GameGrid
+                    games={notInProgressGames}
+                    predictions={predictions}
+                  />
+                </div>
+              ) : null}
             </div>
           )}
         </section>

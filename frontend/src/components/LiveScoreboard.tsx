@@ -1,8 +1,5 @@
+import { teamLabel } from "@/lib/teams";
 import type { Game, LiveState } from "@/lib/types";
-
-function teamLabel(team: Game["home_team"]): string {
-  return team.city ? `${team.city} ${team.name}` : team.name;
-}
 
 function formatInning(live: LiveState): string {
   if (live.current_inning == null) {
@@ -31,8 +28,8 @@ function CountDots({
     return null;
   }
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-10 text-xs uppercase tracking-wide text-muted">
+    <div className="contents">
+      <span className="text-xs uppercase tracking-wide text-muted">
         {label}
       </span>
       <div className="flex gap-1" aria-label={`${filled} ${label}`}>
@@ -96,7 +93,7 @@ export function LiveScoreboard({
 
       {live &&
       (live.outs != null || live.balls != null || live.strikes != null) ? (
-        <div className="mt-6 space-y-2 border-t border-border pt-4">
+        <div className="mt-6 grid grid-cols-[max-content_auto] items-center gap-x-3 gap-y-2 border-t border-border pt-4">
           <CountDots label="Balls" filled={live.balls} total={4} />
           <CountDots label="Strikes" filled={live.strikes} total={3} />
           <CountDots label="Outs" filled={live.outs} total={3} />

@@ -18,16 +18,13 @@ import {
   unfollow,
   updateNotificationPreferences,
 } from "@/lib/api";
+import { teamLabel } from "@/lib/teams";
 import type {
   Follow,
   NotificationItem,
   NotificationPreference,
   Team,
 } from "@/lib/types";
-
-function teamLabel(team: Team): string {
-  return team.city ? `${team.city} ${team.name}` : team.name;
-}
 
 const ALERT_TOGGLES: {
   key: keyof NotificationPreference;

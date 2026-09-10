@@ -13,9 +13,15 @@ from typing import Optional
 
 import pandas as pd
 
-from baseball_analyze.data.cache_utils import default_cache_dir, load_or_compute
+from baseball_analyze.data.cache_utils import (
+    default_cache_dir,
+    load_or_compute,
+    season_table_as_of_key,
+)
 from baseball_analyze.data.mlb_client import (
     fetch_season_stat_splits,
+    fetch_stats_by_date_range,
+    season_stats_window_start,
     team_id_to_abbrev_map,
 )
 from baseball_analyze.data.savant_client import (
@@ -219,36 +225,268 @@ def _team_pitching_table(season: int) -> pd.DataFrame:
     return out
 
 
-def load_team_batting(season: int, cache_dir: Optional[Path] = None) -> pd.DataFrame:
-    """One row per team with at least ``wRC+`` (Savant xwOBA scaled to ~100)."""
+def _parse_ops(raw: object) -> float:
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return float("nan")
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return float("nan")
+        if text.startswith("."):
+            text = "0" + text
+        try:
+            return float(text)
+        except ValueError:
+            return float("nan")
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return float("nan")
+
+
+def _as_of_team_offense_table(season: int, end_date: str) -> pd.DataFrame:
+    """Team offense through ``end_date`` from MLB byDateRange (OPS indexed as wRC+)."""
+    start = season_stats_window_start(season)
+    if str(end_date)[:10] < start:
+        return pd.DataFrame(columns=["Team", "wRC+", "wOBA", "xwOBA", "PA", "OPS"])
+
+    id_to_abbrev = team_id_to_abbrev_map()
+    rows: list[dict[str, object]] = []
+    for split in fetch_stats_by_date_range(
+        season,
+        group="hitting",
+        start_date=start,
+        end_date=str(end_date)[:10],
+    ):
+        team = split.get("team") or {}
+        stat = split.get("stat") or {}
+        tid = team.get("id")
+        if tid is None:
+            continue
+        mlb_abbr = id_to_abbrev.get(int(tid)) or team.get("abbreviation")
+        if not mlb_abbr:
+            continue
+        fg_team = mlb_abbrev_to_fangraphs(str(mlb_abbr), season)
+        pa = float(stat.get("plateAppearances") or 0)
+        if pa <= 0:
+            continue
+        ops = _parse_ops(stat.get("ops"))
+        obp = _parse_ops(stat.get("obp"))
+        slg = _parse_ops(stat.get("slg"))
+        if pd.isna(ops) and not (pd.isna(obp) or pd.isna(slg)):
+            ops = float(obp) + float(slg)
+        rows.append(
+            {
+                "Team": fg_team,
+                "PA": pa,
+                "OPS": ops,
+                "_w_ops": (float(ops) if not pd.isna(ops) else 0.0) * pa,
+            }
+        )
+    if not rows:
+        return pd.DataFrame(columns=["Team", "wRC+", "wOBA", "xwOBA", "PA", "OPS"])
+
+    df = pd.DataFrame(rows)
+    g = df.groupby("Team", observed=True).agg(
+        PA=("PA", "sum"),
+        _w_ops=("_w_ops", "sum"),
+    )
+    g["OPS"] = g["_w_ops"] / g["PA"]
+    league = float(g["OPS"].mean()) if len(g) else 0.720
+    if league <= 0:
+        league = 0.720
+    # Keep historical column name; as-of path uses OPS index as the offense proxy.
+    g["wRC+"] = (g["OPS"] / league) * 100.0
+    g["wOBA"] = g["OPS"]  # placeholder scale; relative diffs matter most
+    g["xwOBA"] = g["OPS"]
+    out = g[["wRC+", "wOBA", "xwOBA", "PA", "OPS"]].reset_index().set_index("Team", drop=False)
+    return out
+
+
+def _as_of_pitcher_table(season: int, end_date: str) -> pd.DataFrame:
+    """Pitcher FIP/GS/IP through ``end_date`` from MLB byDateRange counting stats."""
+    start = season_stats_window_start(season)
+    if str(end_date)[:10] < start:
+        return pd.DataFrame(columns=["player_id", "Name", "Team", "FIP", "GS", "IP", "xERA", "G"])
+
+    id_to_abbrev = team_id_to_abbrev_map()
+    rows: list[dict[str, object]] = []
+    for split in fetch_stats_by_date_range(
+        season,
+        group="pitching",
+        start_date=start,
+        end_date=str(end_date)[:10],
+    ):
+        player = split.get("player") or {}
+        team = split.get("team") or {}
+        stat = split.get("stat") or {}
+        pid = player.get("id")
+        tid = team.get("id")
+        if pid is None or tid is None:
+            continue
+        mlb_abbr = id_to_abbrev.get(int(tid)) or team.get("abbreviation")
+        if not mlb_abbr:
+            continue
+        fg_team = mlb_abbrev_to_fangraphs(str(mlb_abbr), season)
+        ip = _ip_to_float(stat.get("inningsPitched"))
+        if ip <= 0:
+            continue
+        hr = float(stat.get("homeRuns") or 0)
+        bb = float(stat.get("baseOnBalls") or 0)
+        hbp = float(stat.get("hitByPitch") or 0)
+        so = float(stat.get("strikeOuts") or 0)
+        gs = float(stat.get("gamesStarted") or 0)
+        g_ct = float(stat.get("gamesPlayed") or stat.get("games") or 0)
+        rows.append(
+            {
+                "player_id": int(pid),
+                "Name": player.get("fullName") or "",
+                "Team": fg_team,
+                "FIP": _compute_fip(hr, bb, hbp, so, ip),
+                "GS": gs,
+                "IP": ip,
+                "xERA": float("nan"),
+                "G": g_ct,
+                "_weight": ip,
+            }
+        )
+    if not rows:
+        return pd.DataFrame(columns=["player_id", "Name", "Team", "FIP", "GS", "IP", "xERA", "G"])
+
+    df = pd.DataFrame(rows)
+    # Prefer the club with the most IP in-window; sum GS across clubs.
+    team_pick = (
+        df.sort_values(["player_id", "_weight"], ascending=[True, False])
+        .drop_duplicates(subset=["player_id"], keep="first")
+        [["player_id", "Name", "Team", "FIP", "IP", "xERA", "G"]]
+    )
+    gs_totals = df.groupby("player_id", as_index=False)["GS"].sum()
+    # Recompute FIP on pooled counting would need raw counts; keep best-IP split FIP.
+    out = team_pick.merge(gs_totals, on="player_id", how="left")
+    return out[["player_id", "Name", "Team", "FIP", "GS", "IP", "xERA", "G"]].copy()
+
+
+def _as_of_team_pitching_table(season: int, end_date: str) -> pd.DataFrame:
+    pitchers = _as_of_pitcher_table(season, end_date)
+    pitchers = pitchers.dropna(subset=["Team"]).copy()
+    pitchers = pitchers[pitchers["IP"] > 0].copy()
+    if pitchers.empty:
+        return pd.DataFrame(columns=["Team", "FIP", "IP"])
+    pitchers["_w"] = pitchers["FIP"] * pitchers["IP"]
+    g = pitchers.groupby("Team", observed=True).agg(
+        _w=("_w", "sum"),
+        IP=("IP", "sum"),
+    )
+    g["FIP"] = g["_w"] / g["IP"]
+    return g[["FIP", "IP"]].reset_index().set_index("Team", drop=False)
+
+
+def load_team_batting(
+    season: int,
+    cache_dir: Optional[Path] = None,
+    *,
+    as_of: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    One row per team with at least ``wRC+``.
+
+    With ``as_of`` (YYYY-MM-DD): MLB byDateRange OPS indexed to ~100.
+    Without: Savant PA-weighted xwOBA scaled to ~100 (season / YTD cache key).
+    """
+    if as_of:
+
+        def compute_as_of() -> pd.DataFrame:
+            return _as_of_team_offense_table(season, str(as_of)[:10])
+
+        return load_or_compute(
+            "mlb_team_batting_as_of",
+            {
+                "season": season,
+                "offense": "ops_index_v1",
+                "as_of": season_table_as_of_key(season, as_of=as_of),
+            },
+            compute_as_of,
+            cache_dir=_cache_dir(cache_dir),
+        )
 
     def compute() -> pd.DataFrame:
         return _team_offense_table(season)
 
     return load_or_compute(
         "savant_team_batting",
-        {"season": season, "offense": "pa_weighted_xwoba_index_v1"},
+        {
+            "season": season,
+            "offense": "pa_weighted_xwoba_index_v1",
+            "as_of": season_table_as_of_key(season),
+        },
         compute,
         cache_dir=_cache_dir(cache_dir),
     )
 
 
-def load_team_pitching(season: int, cache_dir: Optional[Path] = None) -> pd.DataFrame:
-    """One row per team with IP-weighted FIP from Savant counting stats."""
+def load_team_pitching(
+    season: int,
+    cache_dir: Optional[Path] = None,
+    *,
+    as_of: Optional[str] = None,
+) -> pd.DataFrame:
+    """One row per team with IP-weighted FIP (as-of MLB or Savant season)."""
+    if as_of:
+
+        def compute_as_of() -> pd.DataFrame:
+            return _as_of_team_pitching_table(season, str(as_of)[:10])
+
+        return load_or_compute(
+            "mlb_team_pitching_as_of",
+            {
+                "season": season,
+                "fip": "mlb_components_v1",
+                "as_of": season_table_as_of_key(season, as_of=as_of),
+            },
+            compute_as_of,
+            cache_dir=_cache_dir(cache_dir),
+        )
 
     def compute() -> pd.DataFrame:
         return _team_pitching_table(season)
 
     return load_or_compute(
         "savant_team_pitching",
-        {"season": season, "fip": "savant_components_v1"},
+        {
+            "season": season,
+            "fip": "savant_components_v1",
+            "as_of": season_table_as_of_key(season),
+        },
         compute,
         cache_dir=_cache_dir(cache_dir),
     )
 
 
-def load_pitcher_season_stats(season: int, cache_dir: Optional[Path] = None) -> pd.DataFrame:
-    """Pitcher rows with Team, FIP, GS, IP (Savant + MLB team/GS join)."""
+def load_pitcher_season_stats(
+    season: int,
+    cache_dir: Optional[Path] = None,
+    *,
+    as_of: Optional[str] = None,
+) -> pd.DataFrame:
+    """Pitcher rows with Team, FIP, GS, IP."""
+    if as_of:
+
+        def compute_as_of() -> pd.DataFrame:
+            df = _as_of_pitcher_table(season, str(as_of)[:10])
+            bad = df["Team"].isna() | df["Team"].astype(str).str.contains("-", regex=False)
+            return df.loc[~bad].copy()
+
+        return load_or_compute(
+            "mlb_pitching_stats_as_of",
+            {
+                "season": season,
+                "min_ip": 1,
+                "source": "mlb_by_date_range_v1",
+                "as_of": season_table_as_of_key(season, as_of=as_of),
+            },
+            compute_as_of,
+            cache_dir=_cache_dir(cache_dir),
+        )
 
     def compute() -> pd.DataFrame:
         df = _pitcher_season_table(season)
@@ -257,18 +495,29 @@ def load_pitcher_season_stats(season: int, cache_dir: Optional[Path] = None) -> 
 
     return load_or_compute(
         "savant_pitching_stats",
-        {"season": season, "min_ip": 1, "join": "mlb_team_gs_v1"},
+        {
+            "season": season,
+            "min_ip": 1,
+            "join": "mlb_team_gs_v1",
+            "as_of": season_table_as_of_key(season),
+        },
         compute,
         cache_dir=_cache_dir(cache_dir),
     )
 
 
-def bullpen_fip_by_team(season: int, cache_dir: Optional[Path] = None) -> pd.Series:
-    """IP-weighted reliever FIP (GS == 0, min IP)."""
+def bullpen_fip_by_team(
+    season: int,
+    cache_dir: Optional[Path] = None,
+    *,
+    as_of: Optional[str] = None,
+) -> pd.Series:
+    """IP-weighted reliever FIP (GS == 0). Min IP is lower for early as-of windows."""
 
     def compute() -> pd.Series:
-        df = load_pitcher_season_stats(season, cache_dir=cache_dir)
-        rel = df[(df["GS"].fillna(0) == 0) & (df["IP"].fillna(0) >= 10.0)].copy()
+        df = load_pitcher_season_stats(season, cache_dir=cache_dir, as_of=as_of)
+        min_ip = 5.0 if as_of else 10.0
+        rel = df[(df["GS"].fillna(0) == 0) & (df["IP"].fillna(0) >= min_ip)].copy()
         if rel.empty:
             return pd.Series(dtype=float)
         rel = rel.assign(_wip=rel["FIP"].astype(float) * rel["IP"].astype(float))
@@ -278,25 +527,41 @@ def bullpen_fip_by_team(season: int, cache_dir: Optional[Path] = None) -> pd.Ser
         )
         return g["_wip_sum"] / g["ip_sum"].astype(float)
 
+    ns = "mlb_bullpen_fip_as_of" if as_of else "savant_bullpen_fip"
     return load_or_compute(
-        "savant_bullpen_fip",
-        {"season": season},
+        ns,
+        {
+            "season": season,
+            "as_of": season_table_as_of_key(season, as_of=as_of),
+            "min_ip": 5 if as_of else 10,
+        },
         compute,
         cache_dir=_cache_dir(cache_dir),
     )
 
 
-def median_starter_fip_by_team(season: int, cache_dir: Optional[Path] = None) -> pd.Series:
-    """Median FIP for pitchers with GS >= 8 (rotation proxy)."""
+def median_starter_fip_by_team(
+    season: int,
+    cache_dir: Optional[Path] = None,
+    *,
+    as_of: Optional[str] = None,
+) -> pd.Series:
+    """Median FIP for rotation pitchers (GS threshold relaxed for as-of windows)."""
 
     def compute() -> pd.Series:
-        df = load_pitcher_season_stats(season, cache_dir=cache_dir)
-        starters = df[df["GS"].fillna(0) >= 8].copy()
+        df = load_pitcher_season_stats(season, cache_dir=cache_dir, as_of=as_of)
+        min_gs = 3 if as_of else 8
+        starters = df[df["GS"].fillna(0) >= min_gs].copy()
         return starters.groupby("Team")["FIP"].median()
 
+    ns = "mlb_median_starter_fip_as_of" if as_of else "savant_median_starter_fip"
     return load_or_compute(
-        "savant_median_starter_fip",
-        {"season": season},
+        ns,
+        {
+            "season": season,
+            "as_of": season_table_as_of_key(season, as_of=as_of),
+            "min_gs": 3 if as_of else 8,
+        },
         compute,
         cache_dir=_cache_dir(cache_dir),
     )

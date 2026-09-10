@@ -68,6 +68,7 @@ class InGameFeatureRow:
     features: dict[str, float]
     notes: list[str] = field(default_factory=list)
     label_home_win: Optional[bool] = None
+    game_date: str = ""
 
 
 def _optional_int(value: Any) -> Optional[int]:
@@ -328,6 +329,7 @@ def build_in_game_features(
     pitcher_stats_cache: Optional[dict[int, tuple[float, float]]] = None,
     bullpen_by_team: Optional[dict[str, float]] = None,
     label_home_win: Optional[bool] = None,
+    game_date: str = "",
 ) -> InGameFeatureRow:
     """
     Map an ``InGameState`` into the fixed ``IN_GAME_FEATURE_COLUMNS`` vector.
@@ -382,6 +384,7 @@ def build_in_game_features(
         features=feats,
         notes=notes,
         label_home_win=label_home_win,
+        game_date=str(game_date or "")[:10],
     )
 
 
@@ -393,6 +396,7 @@ def build_in_game_features_from_feed(
     home_abbrev: str,
     away_abbrev: str,
     cache_dir: Optional[Path] = None,
+    game_date: str = "",
 ) -> Optional[InGameFeatureRow]:
     """Live-inference helper: features from current linescore state."""
     state = state_from_linescore(live_feed)
@@ -405,6 +409,7 @@ def build_in_game_features_from_feed(
         home_abbrev=home_abbrev,
         away_abbrev=away_abbrev,
         cache_dir=cache_dir,
+        game_date=game_date,
     )
 
 
@@ -417,6 +422,7 @@ def build_in_game_training_rows_from_feed(
     away_abbrev: str,
     home_won: bool,
     cache_dir: Optional[Path] = None,
+    game_date: str = "",
 ) -> list[InGameFeatureRow]:
     """
     Build one training row per completed at-bat from historical play-by-play.
@@ -443,6 +449,7 @@ def build_in_game_training_rows_from_feed(
                 pitcher_stats_cache=stats_cache,
                 bullpen_by_team=bullpen_by_team,
                 label_home_win=home_won,
+                game_date=game_date,
             )
         )
     return rows

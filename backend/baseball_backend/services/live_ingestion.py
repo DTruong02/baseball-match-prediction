@@ -37,22 +37,12 @@ from baseball_backend.services.live_prediction_service import (
     win_probability_payload,
 )
 from baseball_backend.services.live_rate_limit import PollRateLimiter
+from baseball_backend.services.live_status import is_live_tracking_status
 from baseball_backend.services.live_wp_explanations import build_wp_swing_explanation
 from baseball_backend.services.schedule_sync import _FINAL_STATES
 from baseball_backend.settings import get_settings
 
 logger = logging.getLogger(__name__)
-
-_LIVE_DETAILED_STATES = frozenset(
-    {
-        "In Progress",
-        "Delayed",
-        "Delayed Start",
-        "Manager Challenge",
-        "Suspended",
-        "Warmup",
-    }
-)
 
 
 def _winner_from_scores(
@@ -84,43 +74,49 @@ def _apply_live_state(game: Game, state: GameLiveState) -> None:
             )
 
 
-def _existing_event_ids(db: Session, game_pk: int) -> set[str]:
-    rows = db.scalars(
-        select(GameEvent.event_id).where(GameEvent.game_pk == game_pk)
-    ).all()
-    return set(rows)
+def _existing_events_by_id(db: Session, game_pk: int) -> dict[str, GameEvent]:
+    rows = db.scalars(select(GameEvent).where(GameEvent.game_pk == game_pk)).all()
+    return {row.event_id: row for row in rows}
 
 
-def _insert_events(
+def _upsert_events(
     db: Session,
     game_pk: int,
     events: list[NormalizedGameEvent],
-    existing_ids: set[str],
+    existing_by_id: dict[str, GameEvent],
 ) -> tuple[int, list[NormalizedGameEvent]]:
     """
-    Insert new play events, skipping known ids.
+    Insert new play events and refresh payloads for known ids.
+
+    MLB often exposes an at-bat before ``result.description`` is filled. We
+    insert on first sight, then overwrite the payload when the feed catches up.
 
     Uses a savepoint per insert so concurrent workers racing on the same
     ``(game_pk, event_id)`` unique constraint do not abort the whole sync.
 
-    Returns ``(inserted_count, newly_inserted_events)``.
+    Returns ``(inserted_count, changed_events)`` where changed includes both
+    inserts and payload updates (for live WP / explanation triggers).
     """
     inserted = 0
-    new_events: list[NormalizedGameEvent] = []
+    changed_events: list[NormalizedGameEvent] = []
     for event in events:
-        if event.event_id in existing_ids:
+        existing = existing_by_id.get(event.event_id)
+        if existing is not None:
+            if existing.payload != event.payload:
+                existing.payload = dict(event.payload)
+                existing.type = event.type
+                changed_events.append(event)
             continue
         try:
             with db.begin_nested():
-                db.add(
-                    GameEvent(
-                        game_pk=game_pk,
-                        event_id=event.event_id,
-                        type=event.type,
-                        payload=event.payload,
-                        sequence=event.sequence,
-                    )
+                row = GameEvent(
+                    game_pk=game_pk,
+                    event_id=event.event_id,
+                    type=event.type,
+                    payload=event.payload,
+                    sequence=event.sequence,
                 )
+                db.add(row)
                 db.flush()
         except IntegrityError:
             logger.debug(
@@ -128,12 +124,12 @@ def _insert_events(
                 game_pk,
                 event.event_id,
             )
-            existing_ids.add(event.event_id)
+            # Another worker won the race; reload is unnecessary for this tick.
             continue
-        existing_ids.add(event.event_id)
+        existing_by_id[event.event_id] = row
         inserted += 1
-        new_events.append(event)
-    return inserted, new_events
+        changed_events.append(event)
+    return inserted, changed_events
 
 
 def _previous_live_state(game: Game) -> GameLiveState | None:
@@ -311,9 +307,9 @@ def sync_live_game(
     )
     _apply_live_state(game, state)
 
-    existing_ids = _existing_event_ids(db, game_pk)
+    existing_by_id = _existing_events_by_id(db, game_pk)
     events = normalize_play_events(live_feed)
-    inserted, new_events = _insert_events(db, game_pk, events, existing_ids)
+    inserted, new_events = _upsert_events(db, game_pk, events, existing_by_id)
 
     current_pitcher_id = extract_pitcher_id(live_feed)
     existing_live = get_live_prediction_for_game_pk(db, game_pk)
@@ -413,9 +409,7 @@ def _is_live_candidate(game: Game | ScheduledGame) -> bool:
     else:
         status = game.status
         detailed = game.detailed_state
-    if status == "Live":
-        return True
-    return detailed in _LIVE_DETAILED_STATES
+    return is_live_tracking_status(status, detailed)
 
 
 def list_live_game_pks_for_date(db: Session, game_date: str) -> list[int]:
@@ -481,18 +475,21 @@ def sync_live_games_for_date(
                 }
             )
 
-    if game_pks:
-        if failures == len(game_pks):
-            set_live_feed_health(
-                ok=False,
-                error=f"All {failures} live poll(s) failed for {game_date}",
-            )
-        elif failures == 0:
-            set_live_feed_health(ok=True)
-        else:
-            set_live_feed_health(
-                ok=True,
-                error=f"{failures}/{len(game_pks)} live poll(s) failed for {game_date}",
-            )
+    if not game_pks:
+        # Idle slate is healthy — clear any prior ok=false so the UI does not
+        # keep showing "Live data degraded" after games end or before sync.
+        set_live_feed_health(ok=True)
+    elif failures == len(game_pks):
+        set_live_feed_health(
+            ok=False,
+            error=f"All {failures} live poll(s) failed for {game_date}",
+        )
+    elif failures == 0:
+        set_live_feed_health(ok=True)
+    else:
+        set_live_feed_health(
+            ok=True,
+            error=f"{failures}/{len(game_pks)} live poll(s) failed for {game_date}",
+        )
 
     return summaries

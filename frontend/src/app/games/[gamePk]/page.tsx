@@ -20,11 +20,8 @@ import {
   fetchPrediction,
   summarizeGame,
 } from "@/lib/api";
+import { teamLabel } from "@/lib/teams";
 import type { Game, Prediction } from "@/lib/types";
-
-function teamLabel(team: Game["home_team"]): string {
-  return team.city ? `${team.city} ${team.name}` : team.name;
-}
 
 export default function GameDetailPage() {
   const params = useParams<{ gamePk: string }>();

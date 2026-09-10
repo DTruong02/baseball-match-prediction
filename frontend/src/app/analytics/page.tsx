@@ -7,11 +7,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ApiError, fetchTeams } from "@/lib/api";
+import { teamLabel } from "@/lib/teams";
 import type { Team } from "@/lib/types";
-
-function teamLabel(team: Team): string {
-  return team.city ? `${team.city} ${team.name}` : team.name;
-}
 
 export default function AnalyticsHubPage() {
   const router = useRouter();

@@ -173,5 +173,7 @@ def test_load_in_game_training_config() -> None:
     cfg = load_training_config(Path("configs/in_game_logistic_regression.yaml"))
     assert cfg.out == Path("artifacts/in_game_model.joblib")
     assert cfg.log_csv == Path("artifacts/in_game_training_log.csv")
-    assert cfg.seasons == [2023]
+    assert cfg.seasons == [2023, 2024, 2025, 2026]
+    assert cfg.val_from_date == "2026-08-01"
+    assert cfg.through_date is None
     assert cfg.hyperparameters.class_weight == "balanced"

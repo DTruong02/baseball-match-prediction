@@ -7,6 +7,7 @@ import { Suspense, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ApiError, fetchTeamAnalytics } from "@/lib/api";
+import { teamLabel } from "@/lib/teams";
 import type { TeamAnalytics } from "@/lib/types";
 
 function formatPct(value: number | null | undefined): string {
@@ -21,10 +22,6 @@ function formatMetric(value: number | null | undefined, digits = 1): string {
     return "—";
   }
   return value.toFixed(digits);
-}
-
-function teamLabel(team: TeamAnalytics["team"]): string {
-  return team.city ? `${team.city} ${team.name}` : team.name;
 }
 
 function TeamAnalyticsContent() {

@@ -28,6 +28,26 @@ function eventTitle(event: GameEvent): string {
   );
 }
 
+function eventDescription(event: GameEvent): string {
+  const description = event.payload.description?.trim();
+  if (description) {
+    return description;
+  }
+  const batter = event.payload.batter_name?.trim();
+  const pitcher = event.payload.pitcher_name?.trim();
+  if (batter && pitcher) {
+    return `${batter} batting against ${pitcher}`;
+  }
+  if (batter) {
+    return `${batter} at bat`;
+  }
+  const title = event.payload.event?.trim();
+  if (title) {
+    return title;
+  }
+  return event.payload.is_complete === false ? "At bat in progress…" : "No description.";
+}
+
 export function EventTimeline({ events }: { events: GameEvent[] }) {
   const newestFirst = [...events].reverse();
 
@@ -64,7 +84,7 @@ export function EventTimeline({ events }: { events: GameEvent[] }) {
                   </span>
                 </div>
                 <p className="mt-1 text-sm leading-snug">
-                  {event.payload.description || "No description."}
+                  {eventDescription(event)}
                 </p>
               </li>
             );

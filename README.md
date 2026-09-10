@@ -25,7 +25,7 @@ Thin re-exports at legacy paths (e.g. `baseball_analyze.mlb_client`) remain for 
 
 ## Train a model
 
-Training downloads **one season schedule** from MLB, then **two HTTP calls per game** (linescore + box score) plus FanGraphs tables (cached under `./cache/`). See `--help` for all flags.
+Training downloads season schedules from MLB, keeps **Final / Completed Early** games only, then makes **two HTTP calls per game** (linescore + box score) plus Savant season tables (cached under `./cache/`). See `--help` for all flags.
 
 **Config-driven training** (CLI flags override YAML values):
 
@@ -33,6 +33,21 @@ Training downloads **one season schedule** from MLB, then **two HTTP calls per g
 baseball-analyze-train --config configs/logistic_regression.yaml
 baseball-analyze-train --config configs/logistic_regression.yaml --max-games 400 --seasons 2023
 ```
+
+**Mid-season (include finished games from the current year):**
+
+The default config trains on `2023–2026` Final games and holds out games on/after `val_from_date` for validation. Unfinished / future schedule rows are skipped automatically. Optional `--through-date` caps the pool for a reproducible cutoff.
+
+```bash
+# Use defaults from configs/logistic_regression.yaml (seasons include 2026 + val_from_date)
+baseball-analyze-train --config configs/logistic_regression.yaml
+
+# Or override on the CLI
+baseball-analyze-train --seasons 2023,2024,2025,2026 \
+  --val-from-date 2026-08-01 --through-date 2026-09-09 --calibrate
+```
+
+`val_from_date` takes precedence over `val_seasons` when both are set. Current-year Savant tables are cache-keyed by UTC date so YTD stats refresh daily; finished seasons keep a stable `final` cache key.
 
 **Legacy-style flags** (no config file):
 
@@ -50,15 +65,24 @@ Each training run writes a versioned directory under `artifacts/<run_id>/`:
 
 A convenience copy is also written to the configured `out` path (default `artifacts/model.joblib`) so the CLI and chat keep working without passing a run id.
 
-### v1 training caveats (known leakage)
+### Training accuracy notes
 
-These limits are intentional for v1 pipeline sanity checks; tighter backtests need daily snapshots or play-by-play reconstruction.
+Pregame training defaults to **as-of-game-day** team/pitcher stats (MLB
+``byDateRange`` through the day before each game) and **schedule probable**
+starters (with box-score fallback when a probable is missing). Holdout metrics
+are closer to real pregame conditions than the old end-of-season / box-score
+pipeline, but still not a full market-grade backtest:
 
-1. **Full-season Savant tables** — Team offense (xwOBA scaled as `wRC+`), team pitching (FIP from Savant counting stats), and bullpen aggregates use the **entire season’s** leaderboard for that year, not stats strictly “as of” each game date. Early-season games therefore see end-of-season team strength.
-2. **Box-score starting pitchers** — Training labels use starters from the **post-game box score**, not pregame probables. Inference uses scheduled probables from the MLB schedule API. Train and predict are aligned on *features* for live use, but historical training rows embed post-game pitcher identity.
-3. **Park factors** — Static defaults in `data/park_data.py`; refresh from FanGraphs if you need current-year park precision.
+1. **Early-season sparsity** — As-of windows before enough games have been played
+   use thin samples and neutral fallbacks.
+2. **Historical probables** — MLB schedule hydrate usually retains listed
+   starters; when missing we fall back to the box-score starter.
+3. **Park factors** — Defaults in `data/park_data.py` with light season overlays;
+   refresh from FanGraphs for exact current-year park precision.
 
-Do not treat holdout metrics from this trainer as unbiased pregame forecasting benchmarks without addressing the above.
+Retrain after pulling these changes — `FEATURE_COLUMNS` grew (xFIP, rest days,
+recent starter FIP), so older `model.joblib` artifacts will fail the feature
+mismatch check.
 
 ## Train an in-game (live WP) model
 
@@ -67,6 +91,8 @@ Stage 5 uses a **separate** feature set and artifact from pregame. Training walk
 ```bash
 baseball-analyze-train-in-game --config configs/in_game_logistic_regression.yaml
 baseball-analyze-train-in-game --config configs/in_game_logistic_regression.yaml --max-games 50 --seasons 2023
+# Mid-season: finished current-year games + date holdout (see YAML defaults)
+baseball-analyze-train-in-game --config configs/in_game_logistic_regression.yaml --max-games 50
 ```
 
 Artifacts use the same layout (`artifacts/<run_id>/{model.joblib,metrics.json,manifest.json}`). The convenience copy defaults to `artifacts/in_game_model.joblib`. Manifests include `"kind": "in_game"` and `IN_GAME_FEATURE_COLUMNS`.
@@ -163,11 +189,16 @@ predict_home_win_proba(model, X)
 
 Order is fixed in `baseball_analyze.features.FEATURE_COLUMNS`:
 
-- `diff_wrc_plus`, `diff_ops_vs_sp_hand`, `diff_team_fip`, `diff_starter_fip`, `diff_starter_kbb9`, `diff_bullpen_fip`, `park_factor_runs`, `home_field`
+- `diff_wrc_plus`, `diff_ops_vs_sp_hand`, `diff_team_fip`
+- `diff_starter_fip`, `diff_starter_xfip`, `diff_starter_kbb9`
+- `diff_starter_rest_days`, `diff_starter_recent_fip`
+- `diff_bullpen_fip`, `park_factor_runs`, `home_field`
 
-**Starter FIP / K-BB** come from MLB Stats API `sabermetrics` pitching (no Chadwick / FanGraphs player id map). Team offense/defense and bullpen aggregates use FanGraphs via `pybaseball` (cached under `./cache/`).
-
-Park factors are static defaults in `data/park_data.py`; refresh from FanGraphs if you need current-year precision.
+By default `build_features_for_game` freezes rates through the **day before** the
+game (MLB as-of tables + pitcher game logs for rest / last-3-start FIP). Starter
+FIP / xFIP / K-BB come from MLB Stats API; team offense/pitching/bullpen as-of
+tables aggregate MLB `byDateRange` splits (Savant season tables remain available
+when `use_as_of=False`). Park factors live in `data/park_data.py`.
 
 ### In-game features (Stage 5)
 
@@ -247,6 +278,22 @@ JSON structured logs default on (`LOG_LEVEL`, `LOG_JSON`). Light load test: `pyt
 cd backend
 alembic upgrade head
 ```
+
+**Schedule sync / backfill** (populate `games` / `teams` from MLB):
+
+```bash
+# Today (or a single day)
+baseball-sync-schedule
+baseball-sync-schedule --date 2025-09-08
+
+# Full regular season (one MLB season fetch)
+baseball-sync-schedule --season 2025
+
+# Calendar range across seasons (fetches each overlapping season once, then filters)
+baseball-sync-schedule --from 2024-09-01 --to 2025-09-01
+```
+
+In Docker: `docker compose exec api baseball-sync-schedule --season 2025`. Bulk modes skip follower alerts unless you pass `--alerts`. Regular season only by default (`--game-type R`).
 
 Environment variables (see `.env.example`): `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, `API_HOST`, `API_PORT`, `ARTIFACTS_ROOT`, `REDIS_URL`, `REDIS_ENABLED`, `LIVE_CACHE_TTL_COMPLETED_SECONDS`, `LIVE_PUBSUB_ENABLED`, `LIVE_POLL_INTERVAL_SECONDS`, `LIVE_POLL_GAME_DELAY_SECONDS`, `LIVE_POLL_MIN_REQUEST_INTERVAL_SECONDS`, `LIVE_SYNC_RETRIES`, `LIVE_SYNC_BACKOFF_SECONDS`, `LIVE_STALE_AFTER_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS`, `NOTIFICATION_POLL_INTERVAL_SECONDS`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` (also `OPENAI_*` fallbacks used by the chat REPL), `LOG_LEVEL`, `LOG_JSON`, `METRICS_ENABLED`.
 
