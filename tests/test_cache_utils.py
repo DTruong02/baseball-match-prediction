@@ -10,6 +10,13 @@ import pandas as pd
 from baseball_analyze.data.cache_utils import load_or_compute
 
 
+def _raise_stringdtype_typeerror() -> None:
+    """Module-level helper so pickle can serialize a failing __reduce__ target."""
+    raise TypeError(
+        "StringDtype.__init__() takes from 1 to 2 positional arguments but 3 were given"
+    )
+
+
 def test_load_or_compute_returns_cached_value(tmp_path: Path) -> None:
     calls = {"n": 0}
 
@@ -58,12 +65,7 @@ def test_load_or_compute_recovers_from_unpickling_typeerror(tmp_path: Path) -> N
 
     class _Boom:
         def __reduce__(self):
-            def _raise():
-                raise TypeError(
-                    "StringDtype.__init__() takes from 1 to 2 positional arguments but 3 were given"
-                )
-
-            return (_raise, ())
+            return (_raise_stringdtype_typeerror, ())
 
     with cache_files[0].open("wb") as f:
         pickle.dump(_Boom(), f)
