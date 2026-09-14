@@ -1,0 +1,27 @@
+# Core-8 pregame ablation (same holdout as logistic_regression.yaml).
+# Omits xfip / rest_days / recent_fip so results compare fairly to the full set.
+
+seasons: [2024, 2025, 2026]
+val_seasons: []
+through_date: null
+val_from_date: "2026-08-01"
+feature_columns:
+  - diff_wrc_plus
+  - diff_ops_vs_sp_hand
+  - diff_team_fip
+  - diff_starter_fip
+  - diff_starter_kbb9
+  - diff_bullpen_fip
+  - park_factor_runs
+  - home_field
+max_games: null
+test_size: 0.25
+out: artifacts/model.joblib
+log_csv: artifacts/training_log.csv
+random_state: 42
+cache_dir: null
+
+hyperparameters:
+  calibrate: true
+  class_weight: balanced
+  c_grid: [0.05, 0.1, 0.5, 1.0, 5.0, 10.0]

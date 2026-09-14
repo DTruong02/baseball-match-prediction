@@ -28,6 +28,7 @@ class TrainingConfig(BaseModel):
     val_seasons: list[int] = Field(default_factory=list)
     through_date: Optional[str] = None
     val_from_date: Optional[str] = None
+    feature_columns: Optional[list[str]] = None
     out: Path = Path("artifacts/model.joblib")
     test_size: float = 0.25
     max_games: Optional[int] = None
@@ -57,6 +58,20 @@ class TrainingConfig(BaseModel):
     def _coerce_optional_date(cls, value: Any, info: ValidationInfo) -> Any:
         return coerce_optional_iso_date(value, field_name=info.field_name)
 
+    @field_validator("feature_columns", mode="before")
+    @classmethod
+    def _coerce_feature_columns(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            cols = [part.strip() for part in value.split(",") if part.strip()]
+            return cols or None
+        if isinstance(value, list):
+            return [str(part).strip() for part in value if str(part).strip()]
+        raise TypeError(
+            f"feature_columns must be a list or comma-separated string, got {type(value).__name__}"
+        )
+
 
 def _parse_season_list(value: str) -> list[int]:
     return [int(part.strip()) for part in value.split(",") if part.strip()]
@@ -82,6 +97,7 @@ def apply_cli_overrides(
     val_seasons: Optional[str] = None,
     through_date: Optional[str] = None,
     val_from_date: Optional[str] = None,
+    feature_columns: Optional[str] = None,
     out: Optional[Path] = None,
     test_size: Optional[float] = None,
     max_games: Optional[int] = None,
@@ -104,6 +120,8 @@ def apply_cli_overrides(
         data["through_date"] = through_date
     if val_from_date is not None:
         data["val_from_date"] = val_from_date
+    if feature_columns is not None:
+        data["feature_columns"] = feature_columns
     if out is not None:
         data["out"] = out
     if test_size is not None:

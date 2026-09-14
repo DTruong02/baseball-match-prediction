@@ -5,11 +5,15 @@
 # Mid-season recipe: include finished games from the current year in the pool,
 # train on earlier seasons + early current-year games, validate on recent
 # finished current-year games (val_from_date takes precedence over val_seasons).
+#
+# Uses the full FEATURE_COLUMNS set (11 features). For the core-8 ablation see
+# configs/logistic_regression_core8.yaml — same holdout for fair comparison.
 
-seasons: [2026]
+seasons: [2024, 2025, 2026]
 val_seasons: []
 through_date: null
-val_from_date: "2026-07-01"
+val_from_date: "2026-08-01"
+feature_columns: null
 max_games: null
 test_size: 0.25
 out: artifacts/model.joblib

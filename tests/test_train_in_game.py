@@ -165,15 +165,20 @@ def test_run_in_game_training_writes_versioned_artifacts(
     assert isinstance(model, Pipeline)
     assert cols == IN_GAME_FEATURE_COLUMNS
 
+    # Bare load returns artifact columns; mismatch only when expected_columns set.
+    bare_model, bare_cols = load_artifact(out)
+    assert bare_cols == IN_GAME_FEATURE_COLUMNS
+    assert isinstance(bare_model, Pipeline)
+
     with pytest.raises(ValueError, match="Feature mismatch"):
-        load_artifact(out)  # defaults to pregame columns
+        load_artifact(out, expected_columns=["home_field"])
 
 
 def test_load_in_game_training_config() -> None:
     cfg = load_training_config(Path("configs/in_game_logistic_regression.yaml"))
     assert cfg.out == Path("artifacts/in_game_model.joblib")
     assert cfg.log_csv == Path("artifacts/in_game_training_log.csv")
-    assert cfg.seasons == [2023, 2024, 2025, 2026]
-    assert cfg.val_from_date == "2026-08-01"
+    assert cfg.seasons == [2024, 2025, 2026]
+    assert cfg.val_from_date == "2026-07-01"
     assert cfg.through_date is None
     assert cfg.hyperparameters.class_weight == "balanced"

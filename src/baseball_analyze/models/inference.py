@@ -72,9 +72,14 @@ def predict_game(
     if game.detailed_state in ("Postponed", "Cancelled"):
         raise ValueError(f"Game {game_pk} is {game.detailed_state}")
 
-    model, _cols = load_artifact(path)
+    model, cols = load_artifact(path)
+    unknown = [c for c in cols if c not in FEATURE_COLUMNS]
+    if unknown:
+        raise ValueError(
+            f"Artifact feature columns not in FEATURE_COLUMNS: {unknown}"
+        )
     fr = build_features_for_game(game, cache_dir=cache)
-    X = np.vstack([feature_vector(fr)])
+    X = np.vstack([feature_vector(fr, columns=cols)])
     p_home = float(predict_home_win_proba(model, X)[0])
 
     return {
@@ -84,7 +89,7 @@ def predict_game(
         "away_fg": fr.away_fg,
         "home_win_proba": p_home,
         "away_win_proba": 1.0 - p_home,
-        "features": {c: float(fr.features[c]) for c in FEATURE_COLUMNS},
+        "features": {c: float(fr.features[c]) for c in cols},
         "model_version": resolve_model_version(path),
         "notes": list(fr.notes),
     }

@@ -91,13 +91,18 @@ def load_artifact(
     *,
     expected_columns: list[str] | None = None,
 ) -> Artifact:
+    """
+    Load a ``(model, feature_columns)`` joblib artifact.
+
+    When ``expected_columns`` is provided, the artifact columns must match
+    exactly (used for in-game models). When omitted, the artifact's own
+    column list is trusted so older / ablated pregame models can still load.
+    """
     payload = joblib.load(path)
     model, cols = payload
-    expected = (
-        list(expected_columns)
-        if expected_columns is not None
-        else list(FEATURE_COLUMNS)
-    )
-    if cols != expected:
-        raise ValueError(f"Feature mismatch: artifact {cols} vs expected {expected}")
+    cols = list(cols)
+    if expected_columns is not None:
+        expected = list(expected_columns)
+        if cols != expected:
+            raise ValueError(f"Feature mismatch: artifact {cols} vs expected {expected}")
     return model, cols

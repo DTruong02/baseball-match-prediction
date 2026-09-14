@@ -17,6 +17,7 @@ def test_load_logistic_regression_yaml():
     assert cfg.val_seasons == []
     assert cfg.through_date is None
     assert cfg.val_from_date == "2026-08-01"
+    assert cfg.feature_columns is None
     assert cfg.max_games is None
     assert cfg.test_size == 0.25
     assert cfg.out == Path("artifacts/model.joblib")
@@ -26,6 +27,24 @@ def test_load_logistic_regression_yaml():
     assert cfg.hyperparameters.calibrate is True
     assert cfg.hyperparameters.class_weight == "balanced"
     assert cfg.hyperparameters.c_grid == [0.05, 0.1, 0.5, 1.0, 5.0, 10.0]
+
+
+def test_load_logistic_regression_core8_yaml():
+    path = Path("configs/logistic_regression_core8.yaml")
+    cfg = load_training_config(path)
+
+    assert cfg.seasons == [2024, 2025, 2026]
+    assert cfg.val_from_date == "2026-08-01"
+    assert cfg.feature_columns == [
+        "diff_wrc_plus",
+        "diff_ops_vs_sp_hand",
+        "diff_team_fip",
+        "diff_starter_fip",
+        "diff_starter_kbb9",
+        "diff_bullpen_fip",
+        "park_factor_runs",
+        "home_field",
+    ]
 
 
 def test_training_config_defaults_match_legacy_cli():
@@ -52,6 +71,7 @@ def test_apply_cli_overrides():
         val_seasons="2024",
         through_date="2026-09-01",
         val_from_date="2026-08-15",
+        feature_columns="diff_wrc_plus,home_field",
         max_games=250,
         tune_c="0.5,1",
         class_weight="none",
@@ -65,6 +85,7 @@ def test_apply_cli_overrides():
     assert cfg.val_seasons == [2024]
     assert cfg.through_date == "2026-09-01"
     assert cfg.val_from_date == "2026-08-15"
+    assert cfg.feature_columns == ["diff_wrc_plus", "home_field"]
     assert cfg.max_games == 250
     assert cfg.hyperparameters.c_grid == [0.5, 1.0]
     assert cfg.hyperparameters.class_weight == "none"

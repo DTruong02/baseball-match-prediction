@@ -231,9 +231,16 @@ def build_features_for_game(
     )
 
 
-def feature_vector(row: FeatureRow) -> np.ndarray:
-    return np.array([row.features[c] for c in FEATURE_COLUMNS], dtype=float)
+def feature_vector(
+    row: FeatureRow,
+    columns: list[str] | None = None,
+) -> np.ndarray:
+    cols = FEATURE_COLUMNS if columns is None else columns
+    return np.array([row.features[c] for c in cols], dtype=float)
 
 
-def features_dict_to_matrix(rows: list[FeatureRow]) -> np.ndarray:
-    return np.vstack([feature_vector(r) for r in rows])
+def features_dict_to_matrix(
+    rows: list[FeatureRow],
+    columns: list[str] | None = None,
+) -> np.ndarray:
+    return np.vstack([feature_vector(r, columns=columns) for r in rows])

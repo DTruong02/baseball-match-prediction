@@ -98,6 +98,7 @@ def build_training_sample(
     through_date: Optional[str] = None,
     *,
     starter_source: str = "probable",
+    feature_columns: Optional[List[str]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, List[FeatureRow]]:
     """
     Build labeled pregame feature rows for completed games.
@@ -111,11 +112,17 @@ def build_training_sample(
 
     Only Final / Completed Early games are kept. Optional ``through_date``
     (YYYY-MM-DD) further restricts the pool for mid-season runs.
+    Optional ``feature_columns`` subsets the model matrix (must be in
+    ``FEATURE_COLUMNS``).
     """
     if starter_source not in ("probable", "boxscore", "probable_fallback_box"):
         raise ValueError(
             "starter_source must be 'probable', 'boxscore', or 'probable_fallback_box'"
         )
+    cols = list(feature_columns) if feature_columns is not None else list(FEATURE_COLUMNS)
+    unknown = [c for c in cols if c not in FEATURE_COLUMNS]
+    if unknown:
+        raise ValueError(f"Unknown feature_columns: {unknown}")
     rows: list[FeatureRow] = []
     labels: list[int] = []
     n_done = 0
@@ -197,7 +204,7 @@ def build_training_sample(
     if not rows:
         raise RuntimeError("No training rows collected; check seasons and network.")
 
-    X = features_dict_to_matrix(rows)
+    X = features_dict_to_matrix(rows, columns=cols)
     y = np.array(labels, dtype=int)
     return X, y, rows
 
@@ -208,6 +215,11 @@ def _run_training(cfg: TrainingConfig) -> None:
     val_list = cfg.val_seasons
     through_date = cfg.through_date
     val_from_date = cfg.val_from_date
+    feature_cols = (
+        list(cfg.feature_columns)
+        if cfg.feature_columns is not None
+        else list(FEATURE_COLUMNS)
+    )
     out = cfg.out
     test_size = cfg.test_size
     max_games = cfg.max_games
@@ -223,12 +235,14 @@ def _run_training(cfg: TrainingConfig) -> None:
             f"Season {s}: as-of team/pitcher tables build on demand per game date "
             f"(cached under ./cache/)..."
         )
+    typer.echo(f"Using {len(feature_cols)} features: {feature_cols}")
     X, y, rows = build_training_sample(
         season_list,
         cache_dir=cache_dir,
         max_games=max_games,
         through_date=through_date,
         starter_source="probable",
+        feature_columns=feature_cols,
     )
     # Split: val_from_date > val_seasons > random
     split_type, val_mask = resolve_split_masks(
@@ -296,7 +310,7 @@ def _run_training(cfg: TrainingConfig) -> None:
         max_games=max_games,
         test_size=float(test_size),
         hyperparameters=hyperparams,
-        feature_columns=FEATURE_COLUMNS,
+        feature_columns=feature_cols,
         created_at=created_at,
         git_hash=git_hash,
         through_date=through_date,
@@ -312,7 +326,7 @@ def _run_training(cfg: TrainingConfig) -> None:
         run_id=run_id,
     )
     typer.echo(f"Saved versioned run to {run_dir}")
-    typer.echo(f"Copied convenience model to {out} with features {FEATURE_COLUMNS}")
+    typer.echo(f"Copied convenience model to {out} with features {feature_cols}")
 
     _append_training_log_csv(
         log_csv,
@@ -337,7 +351,7 @@ def _run_training(cfg: TrainingConfig) -> None:
             "log_loss": float(best["log_loss"]),
             "accuracy": float(best["accuracy"]),
             "roc_auc": float(best["roc_auc"]),
-            "features": ",".join(FEATURE_COLUMNS),
+            "features": ",".join(feature_cols),
         },
     )
     typer.echo(f"Appended training log row to {log_csv}")
@@ -368,6 +382,11 @@ def train_run(
     val_from_date: Optional[str] = typer.Option(
         None,
         help="Hold out Final games on/after this YYYY-MM-DD for validation (takes precedence over --val-seasons).",
+    ),
+    feature_columns: Optional[str] = typer.Option(
+        None,
+        "--feature-columns",
+        help="Comma-separated subset of FEATURE_COLUMNS (e.g. core-8 ablation).",
     ),
     out: Optional[Path] = typer.Option(
         None,
@@ -402,6 +421,7 @@ def train_run(
         val_seasons=val_seasons,
         through_date=through_date,
         val_from_date=val_from_date,
+        feature_columns=feature_columns,
         out=out,
         test_size=test_size,
         max_games=max_games,
